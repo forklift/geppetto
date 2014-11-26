@@ -1,0 +1,11 @@
+[Meta]
+Description=Gogs (Go Git Service) server daemon
+After=syslog.target network.target #mysqld.service postgresql.service memcached.service redis.service
+Boot=Yes
+
+[Service]
+Type=simple
+User=git
+Group=git
+WorkingDirectory=/home/git/gogs
+ExecStart=/home/git/gogs/start.sh
