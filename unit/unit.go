@@ -1,26 +1,38 @@
 package unit
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/omeid/go-ini"
 )
 
 const BASEPATH = "test/"
 
-func Get(name string) (*Unit, error) {
+func Read(name string) (*Unit, error) {
 
 	file, err := os.Open(filepath.Join(BASEPATH, name))
 	if err != nil {
 		return nil, err
 	}
-	_ = file
-	return nil, nil
+
+	return Parse(file)
 }
 
-type Unit struct {
-	//Unit is the "unit" files for Geppeto.
+func Parse(reader io.Reader) (*Unit, error) {
+	u := &Unit{}
 
+	err := ini.NewDecoder(reader).Decode(u)
+	if err != nil {
+		return nil, err
+	}
+
+	return u, u.Prepare()
+}
+
+type Meta struct {
 	// The version of Gepetto that this Unit was written for, Gepetto will try it's best
 	// to treat the Unit like the version specified.
 	// Gepetto will refuse to run a Unit If version is missing, invalid, or incompatible.
@@ -33,6 +45,10 @@ type Unit struct {
 	// Bad  example: `Web Server` (too generic).
 	// Bad  example: `Nginx high-performance light-weight HTTP and Reverse Proxy Server` (too long).
 	Description string
+}
+
+type Service struct {
+
 	//Configures the process start-up type for this service unit. One of : `simple`, `forking`, `oneshot`.
 	// `simple` : It is expected that the process configured with `ExecStart` is the main process of the service.
 	// `oneshot`: Similar to simple; however, it is expected that the process has to exit before systemd starts follow-up units.
@@ -71,18 +87,22 @@ type Unit struct {
 	// This will not be run in a shell, so there is NO pipe or redirects, variables. If your program needs it, fix your program, or write a wrapper.
 	ExecStart string
 
-	//Have we prepared the process?
-	Ready bool
-	//TODO: filebase/codec/ini needs support for this!
-	Environment map[string]string
+	//These commens will be
+	Stdin  UnifiedIO //io.Reader
+	Stdout UnifiedIO //io.Writer
+}
+
+type Unit struct {
+	//Unit is the "unit" files for Geppeto.
+
+	Meta    Meta
+	Service Service
 
 	//The actuall process on system.
 	process *exec.Cmd
 }
 
 func (u *Unit) Prepare() error {
-
-	u.Ready = true
 	return nil
 }
 
