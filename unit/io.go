@@ -28,12 +28,13 @@ func (i *UnifiedIO) Prepare() error {
 		return nil
 	}
 
-	if i.path.Path == "os.Stdout" {
-		i.ReadWriter = os.Stdout
-		return nil
+	var err error
+
+	if i.path == nil {
+		i.ReadWriter, err = os.Open(os.DevNull)
+		return err
 	}
 
-	var err error
 	switch i.path.Scheme {
 
 	case "file":
