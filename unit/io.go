@@ -12,8 +12,8 @@ import (
 
 //FIXME: Do we need a PTY? Perhaps consider: https://github.com/kr/pty
 type UnifiedIO struct {
-	path   *url.URL
-	Stream io.ReadWriter
+	io.ReadWriter
+	path *url.URL
 }
 
 func (i *UnifiedIO) UnmarshalBinary(raw []byte) error {
@@ -24,12 +24,12 @@ func (i *UnifiedIO) UnmarshalBinary(raw []byte) error {
 
 func (i *UnifiedIO) Prepare() error {
 	//FIXME: Not sure if this is a good idea.
-	if i.Stream != nil {
+	if i.ReadWriter != nil {
 		return nil
 	}
 
 	if i.path.Path == "os.Stdout" {
-		i.Stream = os.Stdout
+		i.ReadWriter = os.Stdout
 		return nil
 	}
 
@@ -38,15 +38,15 @@ func (i *UnifiedIO) Prepare() error {
 
 	case "file":
 		//TODO: is it better to use a ReadOnly vs WriteOnly for stdin/stdout? or not worth the lines of code.
-		i.Stream, err = os.Open(i.path.Path)
+		i.ReadWriter, err = os.Open(i.path.Path)
 
 	//TODO: Check if they actually work, add more if possible.
 	case "tcp", "unix", "unixgram", "udp":
-		i.Stream, err = net.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"))
+		i.ReadWriter, err = net.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"))
 
 	case "tls":
 		tlsConf := &tls.Config{InsecureSkipVerify: true}
-		i.Stream, err = tls.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"), tlsConf)
+		i.ReadWriter, err = tls.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"), tlsConf)
 
 	default:
 		err = errors.New("Unsupported Protocol.")
