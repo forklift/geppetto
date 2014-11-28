@@ -57,18 +57,22 @@ func (u *Unit) Prepare() error {
 		return err
 	}
 
+	cred, err := u.Service.Credentails()
+	if err != nil {
+		return err
+	}
+
 	//TODO: Consider the arguments?
 	u.process = exec.Command(u.Service.ExecStart)
 
 	u.process.Dir = u.Service.WorkingDirectory
+	u.process.Stdin = u.Service.Stdin
+	u.process.Stdout = u.Service.Stdout
+	u.process.Stderr = u.Service.Stderr
 
 	u.process.SysProcAttr = &syscall.SysProcAttr{
-		Chroot: u.Service.Chroot,
-	}
-
-	u.process.SysProcAttr.Credential, err = u.Service.Credentails()
-	if err != nil {
-		return err
+		Chroot:     u.Service.Chroot,
+		Credential: cred,
 	}
 
 	return nil
