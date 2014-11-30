@@ -19,22 +19,44 @@ func Read(name string) (*Unit, error) {
 		return nil, err
 	}
 
-	return Parse(file)
+	return Parse(file, name)
 }
 
-func Parse(reader io.Reader) (*Unit, error) {
+func Parse(reader io.Reader, name string) (*Unit, error) {
 	u := &Unit{}
+	u.Name = name
 
-	err := ini.NewDecoder(reader).Decode(u)
-	if err != nil {
-		return nil, err
-	}
-
-	return u, u.Prepare()
+	return u, ini.NewDecoder(reader).Decode(u)
 }
+
+type Status string
+
+const (
+/*
+	not-found
+	active
+	loaded
+	inactive
+	waiting
+	running
+	exited
+	dead
+*/
+//TODO: Socket activeation??
+//listening
+
+//FUTURE:
+//elapsed
+//mounted
+//plugged
+//stub
+)
 
 type Unit struct {
 	//Unit is the "unit" files for Geppeto.
+
+	Name   string
+	status Status
 
 	Meta    Meta
 	Service Service
@@ -76,6 +98,16 @@ func (u *Unit) Prepare() error {
 	}
 
 	return nil
+}
+
+func (u *Unit) Status() Status {
+	return u.status
+
+}
+
+func (u *Unit) setStatus(s Status) {
+	//TODO: Notify the channel.
+	u.status = s
 }
 
 func (u *Unit) Start() {}
