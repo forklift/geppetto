@@ -7,7 +7,7 @@ import (
 )
 
 func NewTransaction(e *Engine, u *unit.Unit) *Transaction {
-	return &Transaction{engine: e, unit: u}
+	return &Transaction{engine: e, unit: u, deps: make(map[string]*unit.Unit)}
 }
 
 type Transaction struct {
@@ -18,21 +18,13 @@ type Transaction struct {
 
 func (t *Transaction) Prepare() error {
 
-	//TODO: use pipelines here.
-	for _, dep := range t.unit.Service.Requires {
-		_ = dep
-		//if err != nil {
-		//	return err
-		//	}
+	var err error
+	t.deps, err = buildUnits(t.engine, t.unit.Service.Requires, t.unit.Service.Wants)
+	return err
 
-		//	t.deps[u.Name] = t.engine.LoadUnit(u)
-		return nil
-	}
-
-	return nil
 }
 
-func readUnits(errs chan error, names []string) chan *unit.Unit {
+func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit {
 	units := make(chan *unit.Unit)
 
 	go func() {
@@ -40,10 +32,17 @@ func readUnits(errs chan error, names []string) chan *unit.Unit {
 
 		for _, name := range names {
 
-			u, err := unit.Read(name)
-			if err != nil {
-				errs <- err
-				close(errs)
+			var (
+				u   *unit.Unit
+				ok  bool
+				err error
+			)
+			if u, ok = engine.Units[name]; !ok {
+				u, err = unit.Read(name)
+				if err != nil {
+					errs <- err
+					close(errs)
+				}
 			}
 
 			select {
@@ -114,7 +113,7 @@ func mergeUnits(errs chan error, ucs ...chan *unit.Unit) chan *unit.Unit {
 	return all
 }
 
-func buildUnits(unitlists ...[]string) (map[string]*unit.Unit, error) {
+func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*unit.Unit, error) {
 
 	errs := make(chan error)
 
@@ -123,7 +122,7 @@ func buildUnits(unitlists ...[]string) (map[string]*unit.Unit, error) {
 	prepared := make([]chan *unit.Unit, len(unitlists))
 
 	for _, units := range unitlists {
-		prepared = append(prepared, prepareUnits(errs, readUnits(errs, units)))
+		prepared = append(prepared, prepareUnits(errs, readUnits(engine, errs, units)))
 	}
 
 	for {

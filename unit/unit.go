@@ -63,9 +63,16 @@ type Unit struct {
 
 	//The actuall process on system and it's attributes.
 	process *exec.Cmd
+
+	//internals
+	prepared bool
 }
 
 func (u *Unit) Prepare() error {
+
+	if u.prepared {
+		return nil
+	}
 
 	var err error
 
@@ -97,6 +104,7 @@ func (u *Unit) Prepare() error {
 		Credential: cred,
 	}
 
+	u.prepared = true
 	return nil
 }
 
