@@ -20,8 +20,24 @@ func (t *Transaction) Prepare() error {
 
 	var err error
 	t.deps, err = buildUnits(t.engine, t.unit.Service.Requires, t.unit.Service.Wants)
-	return err
+	if err != nil {
+		return err
+	}
 
+	err = t.unit.Prepare()
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+func (t *Transaction) Start() error {
+
+	for _, name := range t.unit.Service.Before {
+		t.engine.StartUnit(name)
+	}
+	return nil
 }
 
 func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit {
@@ -34,10 +50,9 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 
 			var (
 				u   *unit.Unit
-				ok  bool
 				err error
 			)
-			if u, ok = engine.Units[name]; !ok {
+			if !engine.HasUnit(name) {
 				u, err = unit.Read(name)
 				if err != nil {
 					errs <- err
