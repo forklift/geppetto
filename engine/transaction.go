@@ -56,7 +56,7 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 				u, err = unit.Read(name)
 				if err != nil {
 					errs <- err
-					close(errs)
+					return
 				}
 			}
 
@@ -148,12 +148,10 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*unit.Unit, e
 		case u := <-mergeUnits(errs, prepared...):
 			all[u.Name] = u
 		case err := <-errs:
-			if err == nil {
-				return all, nil
-			}
 			for _, u := range all {
 				u.Service.Cleanup() //TODO: Log/Handle errors
 			}
+			close(errs)
 			return nil, err //TODO: should retrun the units so fa?
 		}
 	}
