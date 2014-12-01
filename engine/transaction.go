@@ -62,7 +62,8 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 
 			select {
 			case units <- u:
-			case <-errs:
+			case e := <-errs:
+				errs <- e
 				return
 			}
 		}
@@ -87,7 +88,8 @@ func prepareUnits(errs chan error, units chan *unit.Unit) chan *unit.Unit {
 			return
 			select {
 			case units <- unit:
-			case <-errs:
+			case e := <-errs:
+				errs <- e
 				return
 			}
 
@@ -110,7 +112,8 @@ func mergeUnits(errs chan error, ucs ...chan *unit.Unit) chan *unit.Unit {
 				select {
 				case u := <-uc:
 					all <- u
-				case <-errs:
+				case e := <-errs:
+					errs <- e
 					break
 				}
 			}
