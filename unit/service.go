@@ -31,6 +31,8 @@ type Service struct {
 	// fail after a successful startup.
 	Wants []string
 
+	//TODO: Validate if Before and After values exists in Requires or Wants.
+
 	// A space-separated list of required units to start before this unit is started. The units must exist in Requires or Wants.
 	Before []string
 	// A space-separated list of required units to start before this unit is started. The units must exist in Requires or Wants.
@@ -79,7 +81,6 @@ func (s *Service) Prepare() error {
 	}
 
 	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
-
 		if i == nil {
 			i = &UnifiedIO{}
 		}
@@ -92,6 +93,22 @@ func (s *Service) Prepare() error {
 	}
 
 	return err
+}
+
+func (s *Service) Cleanup() []error {
+	var errs []error
+
+	//Close connections.
+	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
+		if i != nil {
+			err := i.Close()
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	return errs
 }
 
 func (s *Service) Credentails() (*syscall.Credential, error) {
