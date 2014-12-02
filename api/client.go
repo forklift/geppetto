@@ -90,7 +90,11 @@ func (client *Client) do(method string, path string, data interface{}) ([]byte, 
 		res, err = client.httpConn.Do(req)
 	}
 	if err != nil {
-		return nil, res.StatusCode, err
+		status := 0
+		if res != nil {
+			status = res.StatusCode
+		}
+		return nil, status, err
 	}
 	defer res.Body.Close()
 

@@ -1,20 +1,24 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 )
 
-var rh = http.RedirectHandler("http://example.org", 307)
+var port = flag.String("port", "5000", "Define what TCP port to bind to")
 
 func main() {
+
+	flag.Parse()
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/_ping", pong)
 
-	log.Println("Listening...")
-	log.Fatal(http.ListenAndServe(":5000", mux))
+	endpoint := ":" + *port
+	log.Printf("Listening at %s", endpoint)
+	log.Fatal(http.ListenAndServe(endpoint, mux))
 }
 
 func pong(w http.ResponseWriter, req *http.Request) {
