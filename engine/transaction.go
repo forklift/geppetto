@@ -69,9 +69,9 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	}
 
 	errs := make(chan error)
-	done := make(chan struct{})
+	cancel := make(chan struct{})
 	end := make(chan struct{})
-	transactions := prepareTransactions(engine, errs, done, readUnits(engine, errs, done, units))
+	transactions := prepareTransactions(engine, errs, cancel, readUnits(engine, errs, cancel, units))
 
 	go func() {
 		for t := range transactions {
@@ -83,7 +83,7 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	select {
 	case err := <-errs:
 		if err != nil {
-			close(done)
+			close(cancel)
 			<-end //Wait for all units.
 			for _, t := range all {
 				t.unit.Service.Cleanup() //TODO: Log/Handle errors
@@ -98,7 +98,7 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	return all, nil
 }
 
-func readUnits(engine *Engine, errs chan<- error, done <-chan struct{}, names []string) chan *unit.Unit {
+func readUnits(engine *Engine, errs chan<- error, cancel <-chan struct{}, names []string) chan *unit.Unit {
 	units := make(chan *unit.Unit)
 
 	go func() {
@@ -117,7 +117,7 @@ func readUnits(engine *Engine, errs chan<- error, done <-chan struct{}, names []
 
 			select {
 			case units <- u:
-			case <-done:
+			case <-cancel:
 				return
 			}
 		}
@@ -126,7 +126,7 @@ func readUnits(engine *Engine, errs chan<- error, done <-chan struct{}, names []
 	return units
 }
 
-func prepareTransactions(engine *Engine, errs chan<- error, done <-chan struct{}, units chan *unit.Unit) chan *Transaction {
+func prepareTransactions(engine *Engine, errs chan<- error, cancel <-chan struct{}, units chan *unit.Unit) chan *Transaction {
 
 	transactions := make(chan *Transaction)
 
@@ -144,7 +144,7 @@ func prepareTransactions(engine *Engine, errs chan<- error, done <-chan struct{}
 
 			select {
 			case transactions <- transaction:
-			case <-done:
+			case <-cancel:
 				return
 			}
 
