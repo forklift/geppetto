@@ -1,5 +1,7 @@
 package event
 
+import "sync"
+
 type Status string
 
 const (
@@ -46,10 +48,11 @@ func (e *Event) String() string {
 }
 
 func NewPipe() *Pipe {
-	return &Pipe{make(map[string]chan *Event)}
+	return &Pipe{chans: make(map[string]chan *Event)}
 }
 
 type Pipe struct {
+	sync.Mutex
 	chans map[string]chan *Event
 }
 
@@ -68,9 +71,13 @@ func (p *Pipe) Emit(e *Event) {
 }
 
 func (p *Pipe) Add(name string, ch chan *Event) {
+	p.Lock()
+	defer p.Unlock()
 	p.chans[name] = ch
 }
 
 func (p *Pipe) Drop(name string) {
+	p.Lock()
+	defer p.Unlock()
 	delete(p.chans, name)
 }
