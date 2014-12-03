@@ -1,28 +1,35 @@
 package engine
 
 import (
+	"errors"
 	"sync"
 
+	"github.com/forklift/geppetto/event"
 	"github.com/forklift/geppetto/unit"
 )
 
 func NewTransaction(e *Engine, u *unit.Unit) *Transaction {
-	return &Transaction{engine: e, unit: u, deps: make(map[string]*unit.Unit)}
+	return &Transaction{engine: e, unit: u}
 }
 
 type Transaction struct {
 	engine *Engine
 	unit   *unit.Unit
-	deps   map[string]*unit.Unit
+	ch     chan<- *event.Event
 }
 
 func (t *Transaction) Prepare() error {
 
-	var err error
-	t.deps, err = buildUnits(t.engine, t.unit.Service.Requires, t.unit.Service.Wants)
+	if t.engine.HasUnit(t.unit.Name) {
+		t.engine.Events <- event.NewEvent(t.unit.Name, event.StatusAlreadyLoaded)
+		return errors.New("Unit is already loaded. Transaction canceled.")
+	}
+
+	deps, err := buildUnits(t.engine, t.unit.Service.Requires, t.unit.Service.Wants)
 	if err != nil {
 		return err
 	}
+	_ = deps
 
 	err = t.unit.Prepare()
 	if err != nil {
@@ -35,7 +42,8 @@ func (t *Transaction) Prepare() error {
 func (t *Transaction) Start() error {
 
 	for _, name := range t.unit.Service.Before {
-		t.engine.StartUnit(name)
+		_ = name
+		//t.engine.Start(t.unit)
 	}
 	return nil
 }
@@ -48,16 +56,13 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 
 		for _, name := range names {
 
-			var (
-				u   *unit.Unit
-				err error
-			)
-			if !engine.HasUnit(name) {
-				u, err = unit.Read(name)
-				if err != nil {
-					errs <- err
-					return
-				}
+			if engine.HasUnit(name) {
+				continue
+			}
+
+			u, err := unit.Read(name)
+			if err != nil {
+				errs <- err
 			}
 
 			select {
@@ -68,8 +73,8 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 			}
 		}
 	}()
-	return units
 
+	return units
 }
 
 func prepareUnits(errs chan error, units chan *unit.Unit) chan *unit.Unit {

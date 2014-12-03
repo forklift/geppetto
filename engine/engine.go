@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"errors"
-
 	"github.com/forklift/geppetto/event"
 	"github.com/forklift/geppetto/unit"
 )
@@ -18,11 +16,11 @@ func New() (*Engine, error) {
 
 type Engine struct {
 	//A units registery, holds all the units.
-	units map[string]*unit.Unit
+	units map[string]*Transaction
 
 	//All le transactions.
 	Transactions map[string]*Transaction
-	EventsPipe   chan *event.Event
+	Events       chan<- *event.Event
 }
 
 func (e *Engine) HasUnit(name string) bool {
@@ -33,43 +31,30 @@ func (e *Engine) HasUnit(name string) bool {
 func (e *Engine) LoadUnit(u *unit.Unit) *unit.Unit {
 
 	//TODO: Reload???
-	if u, ok := e.units[u.Name]; !ok {
-		e.units[u.Name] = u
-	}
+	//if u, ok := e.units[u.Name]; !ok {
+	//e.units[u.Name] = u
+	//	}
 
-	return e.units[u.Name]
+	return nil //e.units[u.Name]
 
 }
 
-func (e *Engine) StartTransaction(u *unit.Unit) error {
+func (e *Engine) Start(u *unit.Unit) error {
 
-	var err error
+	var transaction *Transaction
 
-	if _, ok := e.Transactions[u.Name]; !ok {
-		t := NewTransaction(e, u)
-
-		err = t.Prepare()
-		//e.Transactions[u.Name]
+	if t, ok := e.Transactions[u.Name]; ok {
+		e.Events <- event.NewEvent(u.Name, event.StatusAlreadyLoaded)
+		transaction = t
+	} else {
+		transaction = NewTransaction(e, u)
 	}
+
+	err := transaction.Prepare()
 
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func (e *Engine) StartUnit(name string) error {
-
-	var (
-		u  *unit.Unit
-		ok bool
-	)
-
-	if u, ok = e.units[name]; !ok {
-		return errors.New("Unloaded unit.")
-	}
-
-	u.Start()
 	return nil
 }

@@ -4,6 +4,10 @@ import "sync"
 
 type Status string
 
+func (s Status) Error() string {
+	return string(s)
+}
+
 const (
 /*
 	not-found
@@ -30,13 +34,17 @@ const (
 	StatusAlreadyLoaded Status = "Already Loaded."
 )
 
+func NewEvent(from string, status Status) *Event {
+	return &Event{from, status}
+}
+
 type Event struct {
-	unit   string
+	from   string
 	status Status
 }
 
-func (e *Event) Unit() string {
-	return e.unit
+func (e *Event) From() string {
+	return e.from
 }
 
 func (e *Event) Status() Status {
@@ -48,12 +56,12 @@ func (e *Event) String() string {
 }
 
 func NewPipe() *Pipe {
-	return &Pipe{chans: make(map[string]chan *Event)}
+	return &Pipe{chans: make(map[string]chan<- *Event)}
 }
 
 type Pipe struct {
 	sync.Mutex
-	chans map[string]chan *Event
+	chans map[string]chan<- *Event
 }
 
 func (p *Pipe) Emit(e *Event) {
