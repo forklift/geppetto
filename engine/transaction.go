@@ -62,21 +62,23 @@ func (t *Transaction) Start() error {
 func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction, error) {
 
 	errs := make(chan error)
+	done := make(chan struct{})
 
 	all := make(map[string]*Transaction)
 
 	prepared := make([]chan *Transaction, len(unitlists))
 
 	for _, units := range unitlists {
-		prepared = append(prepared, prepareUnits(engine, errs, readUnits(engine, errs, units)))
+		prepared = append(prepared, prepareUnits(engine, errs, done, readUnits(engine, errs, done, units)))
 	}
 
 	for {
 		select {
 		case t := <-mergeTransactions(errs, prepared...):
 			all[t.unit.Name] = t
+			//TODO: Read all errors.
 		case err := <-errs:
-			close(errs)
+			close(done)
 			for _, t := range all {
 				t.unit.Service.Cleanup() //TODO: Log/Handle errors
 			}
@@ -87,7 +89,7 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	return all, nil
 }
 
-func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit {
+func readUnits(engine *Engine, errs chan<- error, done <-chan struct{}, names []string) chan *unit.Unit {
 	units := make(chan *unit.Unit)
 
 	go func() {
@@ -106,8 +108,7 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 
 			select {
 			case units <- u:
-			case e := <-errs:
-				errs <- e
+			case <-done:
 				return
 			}
 		}
@@ -116,7 +117,7 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 	return units
 }
 
-func prepareUnits(engine *Engine, errs chan error, units chan *unit.Unit) chan *Transaction {
+func prepareUnits(engine *Engine, errs chan<- error, done <-chan struct{}, units chan *unit.Unit) chan *Transaction {
 
 	transactions := make(chan *Transaction)
 
@@ -134,8 +135,7 @@ func prepareUnits(engine *Engine, errs chan error, units chan *unit.Unit) chan *
 
 			select {
 			case transactions <- transaction:
-			case e := <-errs:
-				errs <- e
+			case <-done:
 				return
 			}
 
@@ -154,25 +154,11 @@ func mergeTransactions(errs chan error, transactionChans ...chan *Transaction) c
 
 	for _, ch := range transactionChans {
 		go func(uc chan *Transaction) {
-			for {
-				select {
-				case t := <-ch:
-					transactions <- t
-				case e := <-errs:
-					errs <- e
-					break
-				}
+			for t := range ch {
+				transactions <- t
 			}
 			wg.Done()
 		}(ch)
 	}
-
-	// Start a goroutine to close out once all the output goroutines are
-	// done.  This must start after the wg.Add call.
-	go func() {
-		wg.Wait()
-		close(errs)
-	}()
-
 	return transactions
 }
