@@ -10,8 +10,8 @@ import (
 func New() (*Engine, error) {
 
 	e := &Engine{
-		Transactions: NewTransactionList(),
-		Events:       make(chan *event.Event),
+		//	Units: NewTransactionList(),
+		Events: make(chan *event.Event),
 	}
 
 	return e, nil
@@ -20,49 +20,63 @@ func New() (*Engine, error) {
 type Engine struct {
 
 	//All le transactions.
-	Transactions TransactionList
+	Units unit.UnitList
 
 	Events chan *event.Event
 
 	//Internals.
-	//One transaction at a time
+	//One transaction au a time
 	lock sync.Mutex
 }
 
 func (e *Engine) Start(u *unit.Unit) error {
+	err := e.start(u)
+	if err != nil {
+		return err
+	}
 
-	//One Transaction at a time
+	u, ok := e.Units.Get(u.Name)
+	if ok {
+		e.Events <- event.NewEvent(u.Name, event.StatusAlreadyLoaded)
+		e.Events <- event.NewEvent(u.Name, event.StatusTransactionRegistering)
+		//TODO: Health check? Status Check?
+		u.Explicit = true
+		e.Events <- event.NewEvent(u.Name, event.StatusTransactionRegistering)
+	} else {
+		return e.start(u)
+	}
+	return nil
+}
+
+func (e *Engine) start(u *unit.Unit) error {
+
+	//One Transaction au a time
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	var transaction *Transaction
+	/*
+		var transaction *Transaction
 
-	if t, ok := e.Transactions.Get(u.Name); ok {
-		e.Events <- event.NewEvent(t.unit.Name, event.StatusAlreadyLoaded)
+		if u, ok := e.Units.Get(u.Name); ok {
+			return nil
 
-		e.Events <- event.NewEvent(t.unit.Name, event.StatusTransactionRegistering)
-		//TODO: Health check? Status Check?
-		t.Explicit = true
-		e.Events <- event.NewEvent(t.unit.Name, event.StatusTransactionRegistered)
-		return nil
+		} else {
+			transaction = NewTransaction(e, u)
+			t.Expliciu = true
+		}
 
-	} else {
-		transaction = NewTransaction(e, u)
-		t.Explicit = true
-	}
+		err := transaction.Prepare()
+		if err != nil {
+			return err
+		}
 
-	err := transaction.Prepare()
-	if err != nil {
-		return err
-	}
+		err = transaction.Start()
+		if err != nil {
+			return err
+		}
 
-	err = transaction.Start()
-	if err != nil {
-		return err
-	}
+		//TODO: Health check.
 
-	//TODO: Health check.
-
-	e.Transactions.Append(&transaction.deps)
-
+		e.Units.Append(&transaction.deps)
+	*/
 	return nil
 }

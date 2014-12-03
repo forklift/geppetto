@@ -81,18 +81,24 @@ func (s *Service) Prepare() error {
 	}
 
 	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
+
 		if i == nil {
 			i = &UnifiedIO{}
 		}
+	}
 
-		err = i.Prepare()
-		if err != nil {
+	return err
+}
+
+func (s *Service) Connect() error {
+	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
+
+		if err := i.Connect(); err != nil {
 			return err
 		}
 
 	}
-
-	return err
+	return nil
 }
 
 func (s *Service) Cleanup() []error {

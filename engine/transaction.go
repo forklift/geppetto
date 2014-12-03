@@ -3,116 +3,145 @@ package engine
 import (
 	"sync"
 
-	"github.com/forklift/geppetto/event"
 	"github.com/forklift/geppetto/unit"
 )
 
-func NewTransaction(e *Engine, u *unit.Unit) *Transaction {
-	return &Transaction{Explicit: false, engine: e, unit: u, ch: make(chan *event.Event), prepared: false}
-}
-
-func NewTransactionList() TransactionList {
-	return TransactionList{transactions: make(map[string]*Transaction)}
-}
-
-type TransactionList struct {
-	transactions map[string]*Transaction
-	lock         sync.Mutex
-}
-
-func (ts *TransactionList) Add(t *Transaction) {
-	ts.lock.Lock()
-	defer ts.lock.Unlock()
-
-	ts.transactions[t.unit.Name] = t
-}
-
-func (ts *TransactionList) addTo(list *TransactionList) {
-	ts.lock.Lock()
-	defer ts.lock.Unlock()
-
-	for name, t := range ts.transactions {
-		list.transactions[name] = t
+func filterLoaded(engine *Engine) func(string) (*unit.Unit, bool) {
+	return func(name string) (*unit.Unit, bool) {
+		u, ok := engine.Units.Get(name)
+		return u, ok
 	}
 }
 
-func (ts *TransactionList) Append(list *TransactionList) {
-	ts.lock.Lock()
-	defer ts.lock.Unlock()
+func prepare(u *unit.Unit) error { return u.Prepare() }
+func connect(u *unit.Unit) error { return u.Service.Connect() }
 
-	list.addTo(ts)
+func buildUnits(engine *Engine, names []string) (map[string]*unit.Unit, error) {
+
+	errs := make(chan error)
+	cancel := make(chan struct{})
+
+	loaded, fresh := filter(errs, cancel, names, filterLoaded(engine))
+
+	do(errs, cancel, merge(loaded, fresh), prepare)
+
+	return nil, nil
 }
 
-func (ts *TransactionList) Get(t string) (*Transaction, bool) {
-	ts.lock.Lock()
-	defer ts.lock.Unlock()
+func filter(errs chan error, cancel chan struct{}, names []string, filter func(string) (*unit.Unit, bool)) (<-chan *unit.Unit, <-chan *unit.Unit) {
 
-	u, ok := ts.transactions[t]
-	return u, ok
-}
+	loaded := make(chan *unit.Unit)
+	fresh := make(chan *unit.Unit)
 
-func (ts *TransactionList) Drop(t string) {
-	ts.lock.Lock()
-	defer ts.lock.Unlock()
+	go func() {
+		defer func() {
+			close(loaded)
+			close(fresh)
+		}()
 
-	delete(ts.transactions, t)
-}
+		for _, name := range names {
+			if u, ok := filter(name); ok {
+				loaded <- u
 
-type Transaction struct {
-	//An Explicit transaction is directly started by the Engine and is not a dep.
-	// So it should not be "terminated" as dependency.
-	Explicit bool
-
-	engine *Engine
-	unit   *unit.Unit
-	ch     chan *event.Event
-
-	depslist []string
-
-	deps     TransactionList
-	prepared bool
-}
-
-func (t *Transaction) Prepare() error {
-
-	if t.prepared {
-		return nil
-	}
-
-	/*if t.engine.HasUnit(t.unit.Name) {
-		t.engine.Events <- event.NewEvent(t.unit.Name, event.StatusAlreadyLoaded)
-		return errors.New("Unit is already loaded. Transaction canceled.")
-	}*/
-
-	t.depslist = append(t.unit.Service.Requires, t.unit.Service.Wants...)
-
-	for _, name := range t.depslist {
-		t, ok := t.engine.Transactions.Get(name)
-		if ok {
-			t.deps.Add(t)
-			continue
+			} else {
+				u, err := unit.Read(name)
+				if err != nil {
+					errs <- err
+				}
+				select {
+				case fresh <- u:
+				case <-cancel:
+					return
+				}
+			}
 		}
-		//Prepare a new transaction of the dep.
-	}
+	}()
 
-	err := t.unit.Prepare()
-	if err != nil {
-		t.unit.Service.Cleanup()
-		return err
-	}
-
-	//NOTE: Is this a good idea? Can we attempt to reprepare a transaction if it fails?
-	if err == nil {
-		t.prepared = true
-	}
-	return err
+	return loaded, fresh
 }
 
-func (t *Transaction) Start() error {
+func do(errs chan error, cancel chan struct{}, units <-chan *unit.Unit, do func(*unit.Unit) error) <-chan *unit.Unit {
 
-	for _, name := range t.unit.Service.Before {
-		_ = name
-		//t.engine.Start(t.unit)
+	prepared := make(chan *unit.Unit)
+
+	go func() {
+		defer close(prepared)
+		for unit := range units {
+
+			err := do(unit)
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			select {
+			case prepared <- unit:
+			case <-cancel:
+				return
+			}
+		}
+	}()
+
+	return prepared
+}
+
+func merge(transactionChans ...<-chan *unit.Unit) <-chan *unit.Unit {
+
+	transactions := make(chan *unit.Unit)
+
+	var wg sync.WaitGroup
+	wg.Add(len(transactionChans))
+
+	for _, ch := range transactionChans {
+		go func(uc <-chan *unit.Unit) {
+			for t := range ch {
+				transactions <- t
+			}
+			wg.Done()
+		}(ch)
+
 	}
-	return nil
+
+	go func() {
+		wg.Wait()
+		close(transactions)
+	}()
+
+	return transactions
+}
+
+func collect(errs chan error, cancel chan struct{}, transactions <-chan *unit.Unit) (map[string]*unit.Unit, error) {
+
+	end := make(chan struct{})
+	all := make(map[string]*unit.Unit)
+
+	//Collect transactions.
+	go func() {
+		defer close(end)
+		for u := range transactions {
+			all[u.Name] = u
+		}
+		close(end) //End.
+	}()
+
+	//Wait for error or end.
+	select {
+	case err := <-errs:
+		if err != nil {
+			close(cancel)
+			//TODO: Clean up in the background. TODO: Pass the events? how do you log the progress?
+			//go func() {
+			<-end //Wait for all units.
+			for _, u := range all {
+				u.Service.Cleanup() //TODO: Log/Handle errors
+			}
+			// }()
+			return nil, err //TODO: should retrun the units so fa?
+		}
+	case <-end:
+		return all, nil
+	}
+	//TODO: Timeout?
+	//TODO: We shouldn't really ever reach here. Panic? Error?
+	return all, nil
 }

@@ -32,6 +32,7 @@ func Parse(reader io.Reader, name string) (*Unit, error) {
 
 type Unit struct {
 	//Unit is the "unit" files for Geppeto.
+	Explicit bool
 
 	Name   string
 	status event.Status
@@ -45,12 +46,15 @@ type Unit struct {
 	//internals
 	prepared bool
 
-	transactions *event.Pipe
+	//Transaction
+	Listeners *event.Pipe
+
+	deps UnitList
 }
 
 func (u *Unit) Prepare() error {
 
-	u.transactions = event.NewPipe()
+	u.Listeners = event.NewPipe()
 
 	if u.prepared {
 		return nil
@@ -88,14 +92,6 @@ func (u *Unit) Prepare() error {
 
 	u.prepared = true
 	return nil
-}
-
-func (u *Unit) AddTransaction(name string, ch chan *event.Event) {
-	u.transactions.Add(name, ch)
-}
-
-func (u *Unit) DropTransaction(name string) {
-	u.transactions.Drop(name)
 }
 
 func (u *Unit) Status() event.Status {

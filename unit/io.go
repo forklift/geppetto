@@ -22,7 +22,7 @@ func (i *UnifiedIO) UnmarshalBinary(raw []byte) error {
 	return err
 }
 
-func (i *UnifiedIO) Prepare() error {
+func (i *UnifiedIO) Connect() error {
 	//FIXME: Not sure if this is a good idea.
 	if i.ReadWriteCloser != nil {
 		return nil
