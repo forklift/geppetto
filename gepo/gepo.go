@@ -50,6 +50,11 @@ func main() {
 		Log = logrus.New()
 
 		server, err = api.NewClient(c.String("endpoint"))
+
+		if err == nil {
+			err = server.Ping()
+		}
+
 		if err != nil {
 			Log.Error(err)
 			return err

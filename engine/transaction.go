@@ -84,15 +84,20 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	case err := <-errs:
 		if err != nil {
 			close(cancel)
+
+			//TODO: Clean up in the background. TODO: Pass the events? how do you log the progress?
+			//go func() {
 			<-end //Wait for all units.
 			for _, t := range all {
 				t.unit.Service.Cleanup() //TODO: Log/Handle errors
 			}
+			//	}()
 			return nil, err //TODO: should retrun the units so fa?
 		}
 	case <-end:
 		return all, nil
 	}
+	//TODO: Timeout?
 
 	//TODO: We shouldn't really ever reach here. Panic? Error?
 	return all, nil

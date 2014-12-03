@@ -34,14 +34,7 @@ func NewClient(endpoint string) (*Client, error) {
 		return nil, err
 	}
 
-	client := &Client{endpoint: ep, httpConn: http.DefaultClient}
-
-	err = client.Ping()
-
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
+	return &Client{endpoint: ep, httpConn: http.DefaultClient}, nil
 }
 
 type Client struct {
