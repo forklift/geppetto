@@ -57,12 +57,12 @@ type Pipe struct {
 }
 
 func (p *Pipe) Emit(e *Event) {
+	p.Lock()
+	defer p.Unlock()
+
 	//TODO: Should we wait for every transaction to process the event before sending another event?
 	//var wg sync.WaitGroup
 	//wg.Add(len(u.transactions))
-
-	p.Lock()
-	defer p.Unlock()
 
 	for _, ch := range p.chans {
 		go func() {
