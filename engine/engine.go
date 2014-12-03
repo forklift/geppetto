@@ -21,10 +21,17 @@ type Engine struct {
 	//All le transactions.
 	Transactions map[string]*Transaction
 	Events       chan<- *event.Event
+
+	//Internals.
+	//One transaction at a time?
+	//       lock sync.Mutex
 }
 
 func (e *Engine) Start(t *unit.Unit) error {
 
+	//One Transaction at a time?
+	//e.lock.Lock()
+	//defer e.lock.Unlock()
 	var transaction *Transaction
 
 	if u, ok := e.units[t.Name]; ok {

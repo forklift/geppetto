@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"sync"
-
 	"github.com/forklift/geppetto/event"
 	"github.com/forklift/geppetto/unit"
 )
@@ -61,30 +59,40 @@ func (t *Transaction) Start() error {
 
 func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction, error) {
 
-	errs := make(chan error)
-	done := make(chan struct{})
+	units := []string{}
 
 	all := make(map[string]*Transaction)
-
-	prepared := make([]chan *Transaction, len(unitlists))
-
-	for _, units := range unitlists {
-		prepared = append(prepared, prepareUnits(engine, errs, done, readUnits(engine, errs, done, units)))
+	for _, list := range unitlists {
+		for _, unit := range list {
+			units = append(units, unit)
+		}
 	}
 
-	for {
-		select {
-		case t := <-mergeTransactions(errs, prepared...):
+	errs := make(chan error)
+	done := make(chan struct{})
+	end := make(chan struct{})
+	transactions := prepareTransactions(engine, errs, done, readUnits(engine, errs, done, units))
+
+	go func() {
+		for t := range transactions {
 			all[t.unit.Name] = t
-			//TODO: Read all errors.
-		case err := <-errs:
+		}
+		close(end)
+	}()
+
+	select {
+	case err := <-errs:
+		if err != nil {
 			close(done)
 			for _, t := range all {
 				t.unit.Service.Cleanup() //TODO: Log/Handle errors
 			}
 			return nil, err //TODO: should retrun the units so fa?
 		}
+	case <-end:
+		return all, nil
 	}
+
 	//TODO: We shouldn't really ever reach here. Panic? Error?
 	return all, nil
 }
@@ -117,7 +125,7 @@ func readUnits(engine *Engine, errs chan<- error, done <-chan struct{}, names []
 	return units
 }
 
-func prepareUnits(engine *Engine, errs chan<- error, done <-chan struct{}, units chan *unit.Unit) chan *Transaction {
+func prepareTransactions(engine *Engine, errs chan<- error, done <-chan struct{}, units chan *unit.Unit) chan *Transaction {
 
 	transactions := make(chan *Transaction)
 
@@ -142,23 +150,5 @@ func prepareUnits(engine *Engine, errs chan<- error, done <-chan struct{}, units
 		}
 	}()
 
-	return transactions
-}
-
-func mergeTransactions(errs chan error, transactionChans ...chan *Transaction) chan *Transaction {
-
-	transactions := make(chan *Transaction)
-
-	var wg sync.WaitGroup
-	wg.Add(len(transactionChans))
-
-	for _, ch := range transactionChans {
-		go func(uc chan *Transaction) {
-			for t := range ch {
-				transactions <- t
-			}
-			wg.Done()
-		}(ch)
-	}
 	return transactions
 }
