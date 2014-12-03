@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/forklift/geppetto/event"
 	"github.com/omeid/go-ini"
 )
 
@@ -29,34 +30,11 @@ func Parse(reader io.Reader, name string) (*Unit, error) {
 	return u, ini.NewDecoder(reader).Decode(u)
 }
 
-type Status string
-
-const (
-/*
-	not-found
-	active
-	loaded
-	inactive
-	waiting
-	running
-	exited
-	dead
-*/
-//TODO: Socket activeation??
-//listening
-
-//FUTURE:
-//elapsed
-//mounted
-//plugged
-//stub
-)
-
 type Unit struct {
 	//Unit is the "unit" files for Geppeto.
 
 	Name   string
-	status Status
+	status event.Status
 
 	Meta    Meta
 	Service Service
@@ -66,9 +44,13 @@ type Unit struct {
 
 	//internals
 	prepared bool
+
+	transactions *event.Pipe
 }
 
 func (u *Unit) Prepare() error {
+
+	u.transactions = event.NewPipe()
 
 	if u.prepared {
 		return nil
@@ -108,12 +90,20 @@ func (u *Unit) Prepare() error {
 	return nil
 }
 
-func (u *Unit) Status() Status {
+func (u *Unit) AddTransaction(name string, ch chan *event.Event) {
+	u.transactions.Add(name, ch)
+}
+
+func (u *Unit) DropTransaction(name string) {
+	u.transactions.Drop(name)
+}
+
+func (u *Unit) Status() event.Status {
 	return u.status
 
 }
 
-func (u *Unit) setStatus(s Status) {
+func (u *Unit) setStatus(s event.Status) {
 	//TODO: Notify the channel.
 	u.status = s
 }

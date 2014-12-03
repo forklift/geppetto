@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 
+	"github.com/forklift/geppetto/event"
 	"github.com/forklift/geppetto/unit"
 )
 
@@ -21,15 +22,8 @@ type Engine struct {
 
 	//All le transactions.
 	Transactions map[string]*Transaction
-	EventsPipe   chan unit.Event
+	EventsPipe   chan *event.Event
 }
-
-type Status string
-
-const (
-	StatusLoaded        Status = "Loaded."
-	StatusAlreadyLoaded Status = "Already Loaded."
-)
 
 func (e *Engine) HasUnit(name string) bool {
 	_, ok := e.units[name]
