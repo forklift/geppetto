@@ -51,3 +51,87 @@ func (e *Engine) Start(t *unit.Unit) error {
 	return transaction.Start()
 
 }
+
+func (e *Engine) requestUnits(units []string) (map[string]*Transaction, error) {
+
+	all := make(map[string]*Transaction)
+
+	errs := make(chan error)
+	cancel := make(chan struct{})
+	transactions := prepareTransactions(e, errs, cancel, units)
+
+	end := make(chan struct{})
+
+	go func() {
+		defer close(end)
+		for t := range transactions {
+			all[t.unit.Name] = t
+		}
+	}()
+
+	select {
+	case err := <-errs:
+		if err != nil {
+			close(cancel)
+
+			//TODO: Clean up in the background. TODO: Pass the events? how do you log the progress?
+			//go func() {
+			<-end //Wait for all units.
+			for _, t := range all {
+				t.unit.Service.Cleanup() //TODO: Log/Handle errors
+			}
+			//	}()
+			return nil, err //TODO: should retrun the units so fa?
+		}
+	case <-end:
+		return all, nil
+	}
+	//TODO: Timeout?
+
+	//TODO: We shouldn't really ever reach here. Panic? Error?
+	return all, nil
+}
+
+func (e *Engine) requestUnit(name string) (*Transaction, error) {
+	if u, ok := e.units[name]; ok {
+		return u, nil
+	}
+	u, err := unit.Read(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewTransaction(e, u), nil
+}
+
+func prepareTransactions(engine *Engine, errs chan<- error, cancel <-chan struct{}, names []string) <-chan *Transaction {
+
+	transactions := make(chan *Transaction)
+	go func() {
+		defer close(transactions)
+		for _, name := range names {
+
+			transaction, err := engine.requestUnit(name)
+
+			if err == nil {
+				err := transaction.Prepare()
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				select {
+				case transactions <- transaction:
+					if err != nil {
+						return
+					}
+				case <-cancel:
+					return
+				}
+
+			}
+		}
+	}()
+
+	return transactions
+}
