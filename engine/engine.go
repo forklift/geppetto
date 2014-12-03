@@ -23,38 +23,24 @@ type Engine struct {
 	Events       chan<- *event.Event
 }
 
-func (e *Engine) HasUnit(name string) bool {
-	_, ok := e.units[name]
-	return ok
-}
-
-func (e *Engine) LoadUnit(u *unit.Unit) *unit.Unit {
-
-	//TODO: Reload???
-	//if u, ok := e.units[u.Name]; !ok {
-	//e.units[u.Name] = u
-	//	}
-
-	return nil //e.units[u.Name]
-
-}
-
-func (e *Engine) Start(u *unit.Unit) error {
+func (e *Engine) Start(t *unit.Unit) error {
 
 	var transaction *Transaction
 
-	if t, ok := e.Transactions[u.Name]; ok {
-		e.Events <- event.NewEvent(u.Name, event.StatusAlreadyLoaded)
-		transaction = t
+	if u, ok := e.units[t.Name]; ok {
+		e.Events <- event.NewEvent(u.unit.Name, event.StatusAlreadyLoaded)
+
+		e.Events <- event.NewEvent(u.unit.Name, event.StatusTransactionRegistering)
+		//TODO: Health check? Status Check?
+		e.Transactions[u.unit.Name] = u
+		e.Events <- event.NewEvent(u.unit.Name, event.StatusTransactionRegistered)
+		return nil
+
 	} else {
-		transaction = NewTransaction(e, u)
+		transaction = NewTransaction(e, t)
 	}
 
-	err := transaction.Prepare()
+	//TODO: prepare, health, add.
+	return transaction.Start()
 
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

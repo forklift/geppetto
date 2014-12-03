@@ -30,8 +30,10 @@ const (
 )
 
 const (
-	StatusLoaded        Status = "Loaded."
-	StatusAlreadyLoaded Status = "Already Loaded."
+	StatusLoaded                 Status = "Loaded."
+	StatusAlreadyLoaded          Status = "Already Loaded."
+	StatusTransactionRegistering Status = "Registering Transaction."
+	StatusTransactionRegistered  Status = "Registering Transaction."
 )
 
 func NewEvent(from string, status Status) *Event {

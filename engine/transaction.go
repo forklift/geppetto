@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/forklift/geppetto/event"
@@ -16,14 +15,21 @@ type Transaction struct {
 	engine *Engine
 	unit   *unit.Unit
 	ch     chan<- *event.Event
+
+	//Internals
+	prepared bool
 }
 
 func (t *Transaction) Prepare() error {
 
-	if t.engine.HasUnit(t.unit.Name) {
+	if t.prepared {
+		return nil
+	}
+
+	/*if t.engine.HasUnit(t.unit.Name) {
 		t.engine.Events <- event.NewEvent(t.unit.Name, event.StatusAlreadyLoaded)
 		return errors.New("Unit is already loaded. Transaction canceled.")
-	}
+	}*/
 
 	deps, err := buildUnits(t.engine, t.unit.Service.Requires, t.unit.Service.Wants)
 	if err != nil {
@@ -33,9 +39,14 @@ func (t *Transaction) Prepare() error {
 
 	err = t.unit.Prepare()
 	if err != nil {
+		t.unit.Service.Cleanup()
 		return err
 	}
 
+	//NOTE: Is this a good idea? Can we attempt to reprepare a transaction if it fails?
+	if err == nil {
+		t.prepared = true
+	}
 	return err
 }
 
@@ -48,6 +59,34 @@ func (t *Transaction) Start() error {
 	return nil
 }
 
+func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction, error) {
+
+	errs := make(chan error)
+
+	all := make(map[string]*Transaction)
+
+	prepared := make([]chan *Transaction, len(unitlists))
+
+	for _, units := range unitlists {
+		prepared = append(prepared, prepareUnits(engine, errs, readUnits(engine, errs, units)))
+	}
+
+	for {
+		select {
+		case t := <-mergeTransactions(errs, prepared...):
+			all[t.unit.Name] = t
+		case err := <-errs:
+			close(errs)
+			for _, t := range all {
+				t.unit.Service.Cleanup() //TODO: Log/Handle errors
+			}
+			return nil, err //TODO: should retrun the units so fa?
+		}
+	}
+	//TODO: We shouldn't really ever reach here. Panic? Error?
+	return all, nil
+}
+
 func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit {
 	units := make(chan *unit.Unit)
 
@@ -56,9 +95,9 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 
 		for _, name := range names {
 
-			if engine.HasUnit(name) {
-				continue
-			}
+			//if engine.HasUnit(name) {
+			//	continue
+			//}
 
 			u, err := unit.Read(name)
 			if err != nil {
@@ -77,22 +116,24 @@ func readUnits(engine *Engine, errs chan error, names []string) chan *unit.Unit 
 	return units
 }
 
-func prepareUnits(errs chan error, units chan *unit.Unit) chan *unit.Unit {
+func prepareUnits(engine *Engine, errs chan error, units chan *unit.Unit) chan *Transaction {
 
-	prepared := make(chan *unit.Unit)
+	transactions := make(chan *Transaction)
 
 	defer close(units)
 
 	go func() {
 		for unit := range units {
-			err := unit.Prepare()
+
+			transaction := NewTransaction(engine, unit)
+			err := transaction.Prepare()
 			if err != nil {
-				unit.Service.Cleanup()
-				close(errs)
+				errs <- err
+				return
 			}
-			return
+
 			select {
-			case units <- unit:
+			case transactions <- transaction:
 			case e := <-errs:
 				errs <- e
 				return
@@ -101,29 +142,29 @@ func prepareUnits(errs chan error, units chan *unit.Unit) chan *unit.Unit {
 		}
 	}()
 
-	return prepared
+	return transactions
 }
 
-func mergeUnits(errs chan error, ucs ...chan *unit.Unit) chan *unit.Unit {
+func mergeTransactions(errs chan error, transactionChans ...chan *Transaction) chan *Transaction {
 
-	all := make(chan *unit.Unit)
+	transactions := make(chan *Transaction)
 
 	var wg sync.WaitGroup
-	wg.Add(len(ucs))
+	wg.Add(len(transactionChans))
 
-	for _, uc := range ucs {
-		go func(uc chan *unit.Unit) {
+	for _, ch := range transactionChans {
+		go func(uc chan *Transaction) {
 			for {
 				select {
-				case u := <-uc:
-					all <- u
+				case t := <-ch:
+					transactions <- t
 				case e := <-errs:
 					errs <- e
 					break
 				}
 			}
 			wg.Done()
-		}(uc)
+		}(ch)
 	}
 
 	// Start a goroutine to close out once all the output goroutines are
@@ -133,33 +174,5 @@ func mergeUnits(errs chan error, ucs ...chan *unit.Unit) chan *unit.Unit {
 		close(errs)
 	}()
 
-	return all
-}
-
-func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*unit.Unit, error) {
-
-	errs := make(chan error)
-
-	all := make(map[string]*unit.Unit)
-
-	prepared := make([]chan *unit.Unit, len(unitlists))
-
-	for _, units := range unitlists {
-		prepared = append(prepared, prepareUnits(errs, readUnits(engine, errs, units)))
-	}
-
-	for {
-		select {
-		case u := <-mergeUnits(errs, prepared...):
-			all[u.Name] = u
-		case err := <-errs:
-			for _, u := range all {
-				u.Service.Cleanup() //TODO: Log/Handle errors
-			}
-			close(errs)
-			return nil, err //TODO: should retrun the units so fa?
-		}
-	}
-	//TODO: We shouldn't really ever reach here. Panic? Error?
-	return all, nil
+	return transactions
 }
