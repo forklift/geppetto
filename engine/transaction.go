@@ -74,10 +74,10 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	transactions := prepareTransactions(engine, errs, cancel, readUnits(engine, errs, cancel, units))
 
 	go func() {
+		defer close(end)
 		for t := range transactions {
 			all[t.unit.Name] = t
 		}
-		close(end)
 	}()
 
 	select {
@@ -130,9 +130,8 @@ func prepareTransactions(engine *Engine, errs chan<- error, cancel <-chan struct
 
 	transactions := make(chan *Transaction)
 
-	defer close(units)
-
 	go func() {
+		defer close(units)
 		for unit := range units {
 
 			transaction := NewTransaction(engine, unit)
