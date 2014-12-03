@@ -136,7 +136,7 @@ func prepareTransactions(engine *Engine, errs chan<- error, cancel <-chan struct
 	transactions := make(chan *Transaction)
 
 	go func() {
-		defer close(units)
+		defer close(transactions)
 		for unit := range units {
 
 			transaction := NewTransaction(engine, unit)
