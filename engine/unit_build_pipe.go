@@ -66,6 +66,7 @@ func do(errs chan error, cancel chan struct{}, units <-chan *unit.Unit, do func(
 
 	go func() {
 		defer close(prepared)
+		//TODO: We can forkout a new goroutines for every "task", but is it worth it? (similar to "merge").
 		for unit := range units {
 
 			err := do(unit)
