@@ -84,6 +84,7 @@ func buildUnits(engine *Engine, unitlists ...[]string) (map[string]*Transaction,
 	case err := <-errs:
 		if err != nil {
 			close(done)
+			<-end //Wait for all units.
 			for _, t := range all {
 				t.unit.Service.Cleanup() //TODO: Log/Handle errors
 			}
