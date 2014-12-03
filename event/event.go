@@ -61,6 +61,9 @@ func (p *Pipe) Emit(e *Event) {
 	//var wg sync.WaitGroup
 	//wg.Add(len(u.transactions))
 
+	p.Lock()
+	defer p.Unlock()
+
 	for _, ch := range p.chans {
 		go func() {
 			ch <- e
