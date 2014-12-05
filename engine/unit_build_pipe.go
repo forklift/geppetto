@@ -6,50 +6,106 @@ import (
 	"github.com/forklift/geppetto/unit"
 )
 
-func filterLoaded(engine *Engine) func(string) (*unit.Unit, bool) {
-	return func(name string) (*unit.Unit, bool) {
-		u, ok := engine.Units.Get(name)
-		return u, ok
+func filterLoaded(engine *Engine) func(unit *unit.Unit) bool {
+	return func(unit *unit.Unit) bool {
+		_, ok := engine.Units.Get(unit.Name)
+		return ok
 	}
 }
 
-func prepare(u *unit.Unit) error { return u.Prepare() }
-func connect(u *unit.Unit) error { return u.Service.Connect() }
+func prepare(engine *Engine) func(u *unit.Unit) error {
 
-func buildUnits(engine *Engine, names []string) (map[string]*unit.Unit, error) {
+	return func(u *unit.Unit) error {
+		err := u.Prepare()
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
+
+func connect(u *unit.Unit) error {
+	return u.Service.Connect()
+}
+
+func start(engine *Engine, u *unit.Unit) (*unit.Unit, error) {
+
+	//Mark it as user package.
+	u.Explicit = true
+
+	units := make(chan *unit.Unit)
 
 	errs := make(chan error)
 	cancel := make(chan struct{})
 
-	loaded, fresh := filter(errs, cancel, names, filterLoaded(engine))
+	loaded, fresh := filter(errs, cancel, units, filterLoaded(engine))
 
-	do(errs, cancel, merge(loaded, fresh), prepare)
+	all := merge(loaded, do(errs, cancel, fresh, unit.Read))
 
-	return nil, nil
+	//push the first unit.
+	units <- u
+	pushDeps(all, units)
+
+	prepared := do(errs, cancel, all, prepare(engine))
+	connected := do(errs, cancel, prepared, connect)
+
+	deps, err := collect(errs, cancel, connected)
+	if err != nil {
+		return nil, err
+	}
+
+	//Do start.
+	err = u.Start()
+
+	if err != nil {
+		return nil, err
+	}
+
+	//Add them to engine.
+	engine.Units.Append(deps)
+
+	return nil, nil //build(engine, errs, cancel, all)
 }
 
-func filter(errs chan error, cancel chan struct{}, names []string, filter func(string) (*unit.Unit, bool)) (<-chan *unit.Unit, <-chan *unit.Unit) {
+func pushDeps(all <-chan *unit.Unit, units chan *unit.Unit) {
+	var wg sync.WaitGroup
+	go func() {
 
-	loaded := make(chan *unit.Unit)
-	fresh := make(chan *unit.Unit)
+		defer close(units)
+		//Pump all the dependencies.
+		for u := range all {
+			wg.Add(1)
+			go func() {
+				for _, u := range unit.Make(append(u.Service.Requires, u.Service.Wants...)) {
+					units <- u
+				}
+				wg.Done()
+			}()
+		}
+		wg.Wait()
+	}()
+}
+
+// MapReduce-ish helpers.
+func filter(errs chan error, cancel chan struct{}, units <-chan *unit.Unit, filter func(*unit.Unit) bool) (<-chan *unit.Unit, <-chan *unit.Unit) {
+
+	pass := make(chan *unit.Unit)
+	fail := make(chan *unit.Unit)
 
 	go func() {
 		defer func() {
-			close(loaded)
-			close(fresh)
+			close(pass)
+			close(fail)
 		}()
 
-		for _, name := range names {
-			if u, ok := filter(name); ok {
-				loaded <- u
+		for u := range units {
+			if filter(u) {
+				pass <- u
 
 			} else {
-				u, err := unit.Read(name)
-				if err != nil {
-					errs <- err
-				}
 				select {
-				case fresh <- u:
+				case fail <- u:
 				case <-cancel:
 					return
 				}
@@ -57,7 +113,7 @@ func filter(errs chan error, cancel chan struct{}, names []string, filter func(s
 		}
 	}()
 
-	return loaded, fresh
+	return pass, fail
 }
 
 func do(errs chan error, cancel chan struct{}, units <-chan *unit.Unit, do func(*unit.Unit) error) <-chan *unit.Unit {
@@ -111,16 +167,16 @@ func merge(transactionChans ...<-chan *unit.Unit) <-chan *unit.Unit {
 	return transactions
 }
 
-func collect(errs chan error, cancel chan struct{}, transactions <-chan *unit.Unit) (map[string]*unit.Unit, error) {
+func collect(errs chan error, cancel chan struct{}, transactions <-chan *unit.Unit) (*unit.UnitList, error) {
 
 	end := make(chan struct{})
-	all := make(map[string]*unit.Unit)
+	all := unit.NewUnitList()
 
 	//Collect transactions.
 	go func() {
 		defer close(end)
 		for u := range transactions {
-			all[u.Name] = u
+			all.Add(u)
 		}
 		close(end) //End.
 	}()
@@ -133,9 +189,8 @@ func collect(errs chan error, cancel chan struct{}, transactions <-chan *unit.Un
 			//TODO: Clean up in the background. TODO: Pass the events? how do you log the progress?
 			//go func() {
 			<-end //Wait for all units.
-			for _, u := range all {
-				u.Service.Cleanup() //TODO: Log/Handle errors
-			}
+			all.ForEach(func(u *unit.Unit) { u.Service.Cleanup() })
+
 			// }()
 			return nil, err //TODO: should retrun the units so fa?
 		}

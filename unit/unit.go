@@ -13,21 +13,26 @@ import (
 
 const BASEPATH = "test/"
 
-func Read(name string) (*Unit, error) {
+func Read(unit *Unit) error {
 
-	file, err := os.Open(filepath.Join(BASEPATH, name))
+	file, err := os.Open(filepath.Join(BASEPATH, unit.Name))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return Parse(file, name)
+	return Parse(file, unit)
 }
 
-func Parse(reader io.Reader, name string) (*Unit, error) {
-	u := &Unit{}
-	u.Name = name
+func Parse(reader io.Reader, unit *Unit) error {
+	return ini.NewDecoder(reader).Decode(unit)
+}
 
-	return u, ini.NewDecoder(reader).Decode(u)
+func Make(names []string) []*Unit {
+	units := []*Unit{}
+	for _, name := range names {
+		units = append(units, &Unit{Name: name})
+	}
+	return units
 }
 
 type Unit struct {
@@ -49,7 +54,7 @@ type Unit struct {
 	//Transaction
 	Listeners *event.Pipe
 
-	deps UnitList
+	Deps *UnitList
 }
 
 func (u *Unit) Prepare() error {
@@ -104,5 +109,8 @@ func (u *Unit) setStatus(s event.Status) {
 	u.status = s
 }
 
-func (u *Unit) Start() {}
-func (u *Unit) Wait()  {}
+func (u *Unit) Start() error {
+
+	return nil
+}
+func (u *Unit) Wait() {}
