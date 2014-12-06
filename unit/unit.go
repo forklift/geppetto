@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/forklift/geppetto/event"
-	"github.com/forklift/geppetto/unit"
 	"github.com/omeid/go-ini"
 )
 
@@ -36,14 +36,6 @@ func Make(names []string) []*Unit {
 	return units
 }
 
-func Prepare(u *unit.Unit) error {
-	err := u.Prepare()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 type Unit struct {
 	//Unit is the "unit" files for Geppeto.
 	Explicit bool
@@ -61,18 +53,23 @@ type Unit struct {
 	prepared bool
 
 	//Transaction
+	Ch        chan *event.Event
 	Listeners *event.Pipe
 
 	Deps *UnitList
+
+	//Keeping it safe.
+	lock sync.Mutex
 }
 
 func (u *Unit) Prepare() error {
 
-	u.Listeners = event.NewPipe()
-
 	if u.prepared {
 		return nil
 	}
+
+	u.Listeners = event.NewPipe()
+	u.Ch = make(chan *event.Event)
 
 	var err error
 
@@ -117,13 +114,46 @@ func (u *Unit) Status() event.Status {
 
 }
 
-func (u *Unit) setStatus(s event.Status) {
+func (u *Unit) Send(s event.Status) {
 	//TODO: Notify the channel.
 	u.status = s
 }
 
 func (u *Unit) Start() error {
 
-	return nil
+	u.lock.Lock()
+	defer u.lock.Unlock()
+
+	pipeline, errs, cancel, units := NewPipeline()
+
+	started := pipeline.Do(errs, cancel, units, pipeline.StartUnit)
+
+	//pipeline.
+	err := pipeline.Wait(errs, cancel, started)
+
+	if err != nil {
+		return err
+	}
+
+	err = u.process.Start()
+
+	if err != nil {
+		return err
+	}
+
+	go u.watch()
+
+	go func() {
+		err := u.process.Wait()
+		_ = err
+		u.Ch <- event.NewEvent(u.Name, event.StatusBye)
+	}()
+	return err
 }
-func (u *Unit) Wait() {}
+
+func (u *Unit) watch() {
+	for e := range u.Ch {
+		u.Listeners.Emit(e)
+		//What to do with events?
+	}
+}

@@ -1,10 +1,6 @@
 package unit
 
-import (
-	"sync"
-
-	"github.com/forklift/geppetto/unit"
-)
+import "sync"
 
 /*
 func NewUnit(e *Engine, u *Unit) *Unit.Uniu {
@@ -63,8 +59,11 @@ func (ul *UnitList) Drop(u string) {
 
 	delete(ul.units, u)
 }
-func (ul *UnitList) Has(unit *unit.Unit) bool {
-	_, ok := engine.Units.Get(unit.Name)
+func (ul *UnitList) Has(unit *Unit) bool {
+	ul.lock.Lock()
+	defer ul.lock.Unlock()
+
+	_, ok := ul.units[unit.Name]
 	return ok
 }
 

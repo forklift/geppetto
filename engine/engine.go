@@ -7,20 +7,20 @@ import (
 	"github.com/forklift/geppetto/unit"
 )
 
-func New() (*Engine, error) {
+func New() *Engine {
 
 	e := &Engine{
-		//	Units: NewTransactionList(),
+		Units:  unit.NewUnitList(),
 		Events: make(chan *event.Event),
 	}
 
-	return e, nil
+	return e
 }
 
 type Engine struct {
 
 	//All le transactions.
-	Units unit.UnitList
+	Units *unit.UnitList
 
 	Events chan *event.Event
 
@@ -34,47 +34,30 @@ func (e *Engine) Attach(unit *unit.Unit) error {
 	return nil
 }
 
-func (e *Engine) Start(u *unit.Unit) error {
-	err := e.start(u)
-	if err != nil {
-		return err
-	}
+func (e *Engine) Start(units ...*unit.Unit) error {
 
-	u, ok := e.Units.Get(u.Name)
-	if ok {
-		e.Events <- event.NewEvent(u.Name, event.StatusAlreadyLoaded)
-		e.Events <- event.NewEvent(u.Name, event.StatusTransactionRegistering)
-		//TODO: Health check? Status Check?
+	for _, u := range units {
+		var err error
+
+		if ut, ok := e.Units.Get(u.Name); ok {
+			e.Events <- event.NewEvent(u.Name, event.StatusAlreadyLoaded)
+			u = ut
+		} else {
+
+			err = e.Prepare(u)
+			if err != nil {
+				return err
+			}
+
+			err = u.Start()
+		}
+		u.Listeners.Add("God", e.Events)
 		u.Explicit = true
 		e.Events <- event.NewEvent(u.Name, event.StatusTransactionRegistering)
-	} else {
-		return e.start(u)
+
+		return err
 	}
 	return nil
-}
-
-func (e *Engine) start(u *unit.Unit) error {
-
-	var err error
-
-	defer func() {
-		if err != nil {
-			u.Cleanup()
-		}
-	}()
-
-	if _, ok := e.Units.Get(u.Name); !ok {
-
-		err = Prepare(e, u)
-
-		if err != nil {
-			return err
-		}
-
-	}
-
-	err := u.Start()
-	return err
 }
 
 func (e *Engine) Prepare(u *unit.Unit) error {
@@ -82,34 +65,31 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	//Mark it as user package.
 	u.Explicit = true
 
-	units := make(chan *unit.Unit)
-
-	errs := make(chan error)
-	cancel := make(chan struct{})
+	pipeline, errs, cancel, units := unit.NewPipeline()
 
 	//Filter loaded units.
-	loaded, fresh := filter(errs, cancel, units, e.Units.Has)
+	loaded, fresh := pipeline.Filter(errs, cancel, units, e.Units.Has)
 
 	//Load the fresh units.
-	fresh = do(errs, cancel, fresh, unit.Read)
+	fresh = pipeline.Do(errs, cancel, fresh, unit.Read)
 
 	//Attach the fresh ones to engine.
-	fresh = do(errs, cancel, fresh, e.Attach)
+	fresh = pipeline.Do(errs, cancel, fresh, e.Attach)
 
 	//Yup.
-	all := merge(loaded, fresh)
+	all := pipeline.Merge(loaded, fresh)
 
 	//Emit deps to units channel.
-	requestDeps(all, units)
+	pipeline.RequestDeps(all, units)
 
 	//Prepare
-	prepared := do(errs, cancel, all, units.Prepare)
+	prepared := pipeline.Do(errs, cancel, all, pipeline.PrepareUnit)
 
 	//Attach deps.
-	withdeps := do(errs, cancel, prepared, attachDeps(prepared))
+	withdeps := pipeline.Do(errs, cancel, prepared, pipeline.AttachDeps(prepared))
 
 	// Start the pipeline...
 	units <- u
 
-	return wait(errs, cancel, withdeps)
+	return pipeline.Wait(errs, cancel, withdeps)
 }
