@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/forklift/geppetto/event"
+	"github.com/forklift/geppetto/unit"
 	"github.com/omeid/go-ini"
 )
 
@@ -33,6 +34,14 @@ func Make(names []string) []*Unit {
 		units = append(units, &Unit{Name: name})
 	}
 	return units
+}
+
+func Prepare(u *unit.Unit) error {
+	err := u.Prepare()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type Unit struct {
@@ -77,7 +86,7 @@ func (u *Unit) Prepare() error {
 		return err
 	}
 
-	cred, err := u.Service.Credentails()
+	cred, err := u.Service.BuildCredentails()
 	if err != nil {
 		return err
 	}
@@ -97,6 +106,10 @@ func (u *Unit) Prepare() error {
 
 	u.prepared = true
 	return nil
+}
+
+func (u *Unit) Clean() []error {
+	return u.Service.CloseIO() //TODO: Check if we have other deps.
 }
 
 func (u *Unit) Status() event.Status {

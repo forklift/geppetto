@@ -90,7 +90,7 @@ func (s *Service) Prepare() error {
 	return err
 }
 
-func (s *Service) Connect() error {
+func (s *Service) ConnectIO() error {
 	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
 
 		if err := i.Connect(); err != nil {
@@ -101,7 +101,7 @@ func (s *Service) Connect() error {
 	return nil
 }
 
-func (s *Service) Cleanup() []error {
+func (s *Service) CloseIO() []error {
 	var errs []error
 
 	//Close connections.
@@ -117,7 +117,7 @@ func (s *Service) Cleanup() []error {
 	return errs
 }
 
-func (s *Service) Credentails() (*syscall.Credential, error) {
+func (s *Service) BuildCredentails() (*syscall.Credential, error) {
 
 	var err error
 

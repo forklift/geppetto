@@ -29,6 +29,11 @@ type Engine struct {
 	lock sync.Mutex
 }
 
+func (e *Engine) Attach(unit *unit.Unit) error {
+	e.Units.Add(unit)
+	return nil
+}
+
 func (e *Engine) Start(u *unit.Unit) error {
 	err := e.start(u)
 	if err != nil {
@@ -50,33 +55,61 @@ func (e *Engine) Start(u *unit.Unit) error {
 
 func (e *Engine) start(u *unit.Unit) error {
 
-	//One Transaction au a time
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	/*
-		var transaction *Transaction
+	var err error
 
-		if u, ok := e.Units.Get(u.Name); ok {
-			return nil
-
-		} else {
-			transaction = NewTransaction(e, u)
-			t.Expliciu = true
+	defer func() {
+		if err != nil {
+			u.Cleanup()
 		}
+	}()
 
-		err := transaction.Prepare()
+	if _, ok := e.Units.Get(u.Name); !ok {
+
+		err = Prepare(e, u)
+
 		if err != nil {
 			return err
 		}
 
-		err = transaction.Start()
-		if err != nil {
-			return err
-		}
+	}
 
-		//TODO: Health check.
+	err := u.Start()
+	return err
+}
 
-		e.Units.Append(&transaction.deps)
-	*/
-	return nil
+func (e *Engine) Prepare(u *unit.Unit) error {
+
+	//Mark it as user package.
+	u.Explicit = true
+
+	units := make(chan *unit.Unit)
+
+	errs := make(chan error)
+	cancel := make(chan struct{})
+
+	//Filter loaded units.
+	loaded, fresh := filter(errs, cancel, units, e.Units.Has)
+
+	//Load the fresh units.
+	fresh = do(errs, cancel, fresh, unit.Read)
+
+	//Attach the fresh ones to engine.
+	fresh = do(errs, cancel, fresh, e.Attach)
+
+	//Yup.
+	all := merge(loaded, fresh)
+
+	//Emit deps to units channel.
+	requestDeps(all, units)
+
+	//Prepare
+	prepared := do(errs, cancel, all, units.Prepare)
+
+	//Attach deps.
+	withdeps := do(errs, cancel, prepared, attachDeps(prepared))
+
+	// Start the pipeline...
+	units <- u
+
+	return wait(errs, cancel, withdeps)
 }
