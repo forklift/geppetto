@@ -39,7 +39,7 @@ const (
 	StatusBye                    Status = "Bye."
 )
 
-func NewEvent(from string, status Status) *Event {
+func New(from string, status Status) *Event {
 	return &Event{from, status}
 }
 
@@ -74,16 +74,16 @@ func (p *Pipe) Emit(e *Event) {
 	defer p.Unlock()
 
 	//TODO: Should we wait for every transaction to process the event before sending another event?
-	//var wg sync.WaitGroup
-	//wg.Add(len(u.transactions))
+	var wg sync.WaitGroup
+	wg.Add(len(p.chans))
 
 	for _, ch := range p.chans {
 		go func() {
 			ch <- e
-			//wg.Done()
+			wg.Done()
 		}()
 	}
-	//wg.Wait()
+	wg.Wait()
 }
 
 func (p *Pipe) Add(name string, ch chan *Event) {

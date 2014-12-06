@@ -43,6 +43,8 @@ func pong(w http.ResponseWriter, req *http.Request) {
 
 func start(w http.ResponseWriter, r *http.Request) {
 
+	fmt.Printf("Request.")
+	w.Write([]byte("Hello.\n"))
 	name := r.FormValue("start")
 
 	if name == "" {
@@ -52,10 +54,9 @@ func start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	units := unit.Make([]string{name})
-	out := Engine.Start(units...)
 
-	for e := range out {
+	for e := range Engine.Start(units...) {
 		w.Write([]byte(e.String()))
 	}
-	w.Write([]byte("Done."))
+	w.Write([]byte("\nDone."))
 }

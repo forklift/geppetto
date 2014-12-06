@@ -1,6 +1,7 @@
 package unit
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -77,7 +78,7 @@ func (u *Unit) Prepare() error {
 
 	err = u.Meta.Prepare()
 	if err != nil {
-		return err
+		return fmt.Errorf("Meta: %s", err)
 	}
 
 	err = u.Service.Prepare()
@@ -86,21 +87,19 @@ func (u *Unit) Prepare() error {
 	}
 
 	cred, err := u.Service.BuildCredentails()
-	if err != nil {
-		return err
-	}
 
 	//TODO: Consider the arguments?
 	u.process = exec.Command(u.Service.ExecStart)
 
 	u.process.Dir = u.Service.WorkingDirectory
-	u.process.Stdin = u.Service.Stdin
-	u.process.Stdout = u.Service.Stdout
-	u.process.Stderr = u.Service.Stderr
 
 	u.process.SysProcAttr = &syscall.SysProcAttr{
-		Chroot:     u.Service.Chroot,
+		Setsid:     true,
 		Credential: cred,
+	}
+
+	if u.Service.Chroot != "" && u.Service.Chroot != "/" {
+		u.process.SysProcAttr.Chroot = u.Service.Chroot
 	}
 
 	u.prepared = true
@@ -126,18 +125,33 @@ func (u *Unit) Start() error {
 	u.lock.Lock()
 	defer u.lock.Unlock()
 
-	pipeline, errs, cancel, units := NewPipeline()
+	/*pipeline, errs, cancel, units := NewPipeline()
 
 	started := pipeline.Do(errs, cancel, units, pipeline.StartUnit)
 
+	go func() {
+		u.Deps.ForEach(func(u *Unit) {
+			units <- u
+		})
+		close(units)
+	}()
 	//pipeline.
 	err := pipeline.Wait(errs, cancel, started)
 
 	if err != nil {
 		return err
+	}*/
+
+	var err error
+	u.process.Stdin, u.process.Stdout, u.process.Stderr, err = u.Service.ConnectIO()
+	if err != nil {
+		return err
 	}
 
-	err = u.process.Start()
+	fmt.Printf("u.process %+v\n", u.process)
+	err = u.process.Run()
+	fmt.Printf("err %+v\n", err)
+	fmt.Println("started...")
 
 	if err != nil {
 		return err
@@ -145,10 +159,14 @@ func (u *Unit) Start() error {
 
 	go u.watch()
 
+	err = u.process.Wait()
+	fmt.Printf("err %+v\n", err)
+	return err
+
 	go func() {
 		err := u.process.Wait()
 		_ = err
-		u.Ch <- event.NewEvent(u.Name, event.StatusBye)
+		u.Ch <- event.New(u.Name, event.StatusBye)
 	}()
 	return err
 }

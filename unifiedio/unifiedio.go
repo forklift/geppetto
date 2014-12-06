@@ -1,4 +1,4 @@
-package unit
+package unifiedio
 
 import (
 	"crypto/tls"
@@ -11,24 +11,29 @@ import (
 )
 
 //FIXME: Do we need a PTY? Perhaps consider: https://github.com/kr/pty
-type UnifiedIO struct {
+type IO struct {
 	io.ReadWriteCloser
 	path *url.URL
 }
 
-func (i *UnifiedIO) UnmarshalBinary(raw []byte) error {
-	var err error
-	i.path, err = url.Parse(string(raw))
-	return err
+func New(path string) (*IO, error) {
+
+	io := &IO{}
+
+	url, err := url.Parse(path)
+	if err != nil {
+		return nil, err
+	}
+	io.path = url
+	return io, nil
 }
 
-func (i *UnifiedIO) Connect() error {
-	//FIXME: Not sure if this is a good idea.
-	if i.ReadWriteCloser != nil {
-		return nil
-	}
+func (i *IO) Connect() error {
 
-	var err error
+	var (
+		err error
+		o   io.ReadWriteCloser
+	)
 
 	//TODO: Close these connections on failur or exit!
 	if i.path == nil {
@@ -40,21 +45,25 @@ func (i *UnifiedIO) Connect() error {
 
 	case "file":
 		//TODO: is it better to use a ReadOnly vs WriteOnly for stdin/stdout? or not worth the lines of code.
-		i.ReadWriteCloser, err = os.Open(i.path.Path)
+		o, err = os.Open(i.path.Path)
 
 	//TODO: Check if they actually work, add more if possible.
 	case "tcp", "unix", "unixgram", "udp":
-		i.ReadWriteCloser, err = net.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"))
+		o, err = net.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"))
 
 	case "tls":
 		tlsConf := &tls.Config{InsecureSkipVerify: true}
-		i.ReadWriteCloser, err = tls.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"), tlsConf)
+		o, err = tls.Dial(i.path.Scheme, strings.TrimPrefix(i.path.String(), i.path.Scheme+"://"), tlsConf)
 
 	default:
 		err = errors.New("Unsupported Protocol.")
 	}
 
 	//TODO: err == nil && i.Stream == nil
+
+	if err == nil {
+		i = &IO{o, i.path}
+	}
 
 	return err
 }

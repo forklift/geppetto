@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/forklift/geppetto/unifiedio"
+	//TODO: Port to GO 1.4, us /x/sys/unix
 	"github.com/forklift/geppetto/unit/sys/group"
 )
 
@@ -60,12 +62,15 @@ type Service struct {
 	// "file", "tcp", "unix", "unixgram", "udp", and "tls".
 	// examples: `file://var/log/Unit`, `tls://feeds.example.tld:443`, `unix://var/run/myunit.sock`
 	// if nothing given, a null device will be used.
-	Stdin  *UnifiedIO //io.Reader
-	Stdout *UnifiedIO //io.Writer
+	Stdin string //io.Reader
+	stdin *unifiedio.IO
+
+	Stdout string //io.Writer
+	stdout *unifiedio.IO
 
 	//TODO: Logging.
-	Stderr *UnifiedIO //io.Writer
-
+	Stderr string //io.Writer
+	stderr *unifiedio.IO
 }
 
 func (s *Service) Prepare() error {
@@ -76,36 +81,42 @@ func (s *Service) Prepare() error {
 		s.ExecStart, err = exec.LookPath(s.ExecStart)
 	}
 
-	if err != nil {
-		return err
-	}
+	for url, io := range map[string]*unifiedio.IO{s.Stdin: s.stdin, s.Stdout: s.stdout, s.Stderr: s.stderr} {
 
-	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
-
-		if i == nil {
-			i = &UnifiedIO{}
+		if url == "" {
+			continue
 		}
+		o, err := unifiedio.New(url)
+		if err != nil {
+			return nil
+		}
+		*io = *o
 	}
 
 	return err
 }
 
-func (s *Service) ConnectIO() error {
-	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
+func (s *Service) ConnectIO() (*unifiedio.IO, *unifiedio.IO, *unifiedio.IO, error) {
+	for _, i := range []*unifiedio.IO{s.stdin, s.stdout, s.stderr} {
+
+		if i == nil {
+			continue
+		}
 
 		if err := i.Connect(); err != nil {
-			return err
+			return nil, nil, nil, err
 		}
 
 	}
-	return nil
+
+	return s.stdin, s.stdout, s.stderr, nil
 }
 
 func (s *Service) CloseIO() []error {
 	var errs []error
 
 	//Close connections.
-	for _, i := range []*UnifiedIO{s.Stdin, s.Stdout, s.Stderr} {
+	for _, i := range []*unifiedio.IO{s.stdin, s.stdout, s.stderr} {
 		if i != nil {
 			err := i.Close()
 			if err != nil {

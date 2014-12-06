@@ -1,7 +1,7 @@
 package unit
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -50,6 +50,7 @@ func (p Pipeline) Do(errs chan error, cancel chan struct{}, units <-chan *Unit, 
 
 	go func() {
 		defer close(prepared)
+		defer fmt.Println("End.")
 		//TODO: We can forkout a new goroutines for every "task", but is it worth it? (similar to "merge").
 		//With "attachDeps" totally makes this worthy?
 		for unit := range units {
@@ -106,8 +107,8 @@ func (p Pipeline) Wait(errs chan error, cancel chan struct{}, input <-chan *Unit
 				close(cancel)
 				return err //TODO: multiple errors?
 			}
-		case <-input:
-			if input == nil {
+		case _, open := <-input:
+			if !open {
 				return nil
 			}
 		}
@@ -120,6 +121,7 @@ func (p Pipeline) Wait(errs chan error, cancel chan struct{}, input <-chan *Unit
 //Helpers
 
 func (p Pipeline) PrepareUnit(u *Unit) error {
+
 	err := u.Prepare()
 	if err != nil {
 		return err
@@ -135,50 +137,40 @@ func (p Pipeline) StartUnit(u *Unit) error {
 	return nil
 }
 
-func (p Pipeline) RequestDeps(all <-chan *Unit, units chan *Unit) {
-	var wg sync.WaitGroup
-	go func() {
-
-		defer close(units)
-		//Pump all the dependencies.
-		for u := range all {
-			if u.Deps == nil { //If the Deps is set. we have already requested this units deps.
-				go func() {
-					wg.Add(1)
-					u.Deps = NewUnitList()
-					for _, u := range Make(append(u.Service.Requires, u.Service.Wants...)) {
-						units <- u
-					}
-					wg.Done()
-				}()
-			}
+func (p Pipeline) RequestDeps(units chan *Unit) func(*Unit) error {
+	return func(u *Unit) error {
+		u.Deps = NewUnitList()
+		for _, u := range Make(append(u.Service.Requires, u.Service.Wants...)) {
+			units <- u
 		}
-		wg.Wait()
-	}()
+		return nil
+	}
 }
 
 func (p Pipeline) AttachDeps(all <-chan *Unit) func(*Unit) error {
 	return func(unit *Unit) error {
-		deps := append(unit.Service.Requires, unit.Service.Wants...)
-		count := len(deps)
-		for u := range all {
-			for _, dep := range deps {
-				if u.Name == dep {
-					count--
-					unit.Deps.Add(u)
-					u.Listeners.Add(unit.Name, unit.Ch)
+		/*
+			deps := append(unit.Service.Requires, unit.Service.Wants...)
+			count := len(deps)
+			for u := range all {
+				for _, dep := range deps {
+					if u.Name == dep {
+						count--
+						unit.Deps.Add(u)
+						u.Listeners.Add(unit.Name, unit.Ch)
+						break
+					}
+				}
+
+				if count == 0 {
 					break
 				}
 			}
 
-			if count == 0 {
-				break
+			if count != 0 {
+				return errors.New("Missing dependency.")
 			}
-		}
-
-		if count != 0 {
-			return errors.New("Missing dependency.")
-		}
+		*/
 		return nil
 	}
 }

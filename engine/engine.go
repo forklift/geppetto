@@ -30,42 +30,42 @@ type Engine struct {
 	lock sync.Mutex
 }
 
-func (e *Engine) Attach(unit *unit.Unit) error {
-	e.Units.Add(unit)
+func (e *Engine) Attach(u *unit.Unit) error {
+	e.Units.Add(u)
 	return nil
 }
 
 func (e *Engine) Start(units ...*unit.Unit) chan *event.Event {
 
-	fmt.Println("Starting...")
 	out := make(chan *event.Event)
 	pipe := event.NewPipe()
 	pipe.Add("Transaction", out)
-	//pipe.Add("Geppetto", e.Events)
+	pipe.Add("Geppetto", e.Events)
 
 	go func() {
-		fmt.Println("Going bg...")
-		pipe.Emit(event.NewEvent("Geppetto", event.StatusStartingService))
+		pipe.Emit(event.New("Geppetto", event.StatusStartingService))
 		for _, u := range units {
 
 			if ut, ok := e.Units.Get(u.Name); ok {
-				pipe.Emit(event.NewEvent(u.Name, event.StatusAlreadyLoaded))
+				pipe.Emit(event.New(u.Name, event.StatusAlreadyLoaded))
 				u = ut
 			} else {
-
-				fmt.Println("Prepareing...")
 				err := e.Prepare(u)
+				fmt.Printf("err %+v\n", err)
 				if err != nil {
-					pipe.Emit(event.NewEvent(u.Name, event.StatusFailed))
+					pipe.Emit(event.New(u.Name, event.StatusFailed))
+					break
 				}
 
+				u.Listeners.Add("Geppetto", e.Events)
 				err = u.Start()
 			}
-			u.Listeners.Add("Geppetto", e.Events)
 			u.Explicit = true
-			pipe.Emit(event.NewEvent(u.Name, event.StatusTransactionRegistering))
+			pipe.Emit(event.New(u.Name, event.StatusTransactionRegistering))
+			u.Start()
 
 		}
+		close(out)
 	}()
 
 	return out
@@ -91,7 +91,7 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	all := pipeline.Merge(loaded, fresh)
 
 	//Emit deps to units channel.
-	pipeline.RequestDeps(all, units)
+	//all = pipeline.Do(errs, cancel, all, pipeline.RequestDeps(units))
 
 	//Prepare
 	prepared := pipeline.Do(errs, cancel, all, pipeline.PrepareUnit)
@@ -101,6 +101,7 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 
 	// Start the pipeline...
 	units <- u
+	close(units) //TODO: What to do with the RequestDeps?
 
 	return pipeline.Wait(errs, cancel, withdeps)
 }
