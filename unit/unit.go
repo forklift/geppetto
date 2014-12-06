@@ -12,11 +12,11 @@ import (
 	"github.com/omeid/go-ini"
 )
 
-const BASEPATH = "test/"
+var BasePath = "/etc/geppetto/"
 
 func Read(unit *Unit) error {
 
-	file, err := os.Open(filepath.Join(BASEPATH, unit.Name))
+	file, err := os.Open(filepath.Join(BasePath, unit.Name))
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,9 @@ type Unit struct {
 	//Unit is the "unit" files for Geppeto.
 	Explicit bool
 
-	Name   string
+	// Reserved names `gGod`, `gCurrentTransaction`
+	Name string
+
 	status event.Status
 
 	Meta    Meta

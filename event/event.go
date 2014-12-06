@@ -31,6 +31,8 @@ const (
 
 const (
 	StatusLoaded                 Status = "Loaded."
+	StatusStartingService        Status = "Starting Service."
+	StatusFailed                 Status = "What a shame. Failed."
 	StatusAlreadyLoaded          Status = "Already Loaded."
 	StatusTransactionRegistering Status = "Registering Transaction."
 	StatusTransactionRegistered  Status = "Registering Transaction."

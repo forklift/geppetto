@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/forklift/geppetto/event"
@@ -34,30 +35,40 @@ func (e *Engine) Attach(unit *unit.Unit) error {
 	return nil
 }
 
-func (e *Engine) Start(units ...*unit.Unit) error {
+func (e *Engine) Start(units ...*unit.Unit) chan *event.Event {
 
-	for _, u := range units {
-		var err error
+	fmt.Println("Starting...")
+	out := make(chan *event.Event)
+	pipe := event.NewPipe()
+	pipe.Add("Transaction", out)
+	//pipe.Add("Geppetto", e.Events)
 
-		if ut, ok := e.Units.Get(u.Name); ok {
-			e.Events <- event.NewEvent(u.Name, event.StatusAlreadyLoaded)
-			u = ut
-		} else {
+	go func() {
+		fmt.Println("Going bg...")
+		pipe.Emit(event.NewEvent("Geppetto", event.StatusStartingService))
+		for _, u := range units {
 
-			err = e.Prepare(u)
-			if err != nil {
-				return err
+			if ut, ok := e.Units.Get(u.Name); ok {
+				pipe.Emit(event.NewEvent(u.Name, event.StatusAlreadyLoaded))
+				u = ut
+			} else {
+
+				fmt.Println("Prepareing...")
+				err := e.Prepare(u)
+				if err != nil {
+					pipe.Emit(event.NewEvent(u.Name, event.StatusFailed))
+				}
+
+				err = u.Start()
 			}
+			u.Listeners.Add("Geppetto", e.Events)
+			u.Explicit = true
+			pipe.Emit(event.NewEvent(u.Name, event.StatusTransactionRegistering))
 
-			err = u.Start()
 		}
-		u.Listeners.Add("God", e.Events)
-		u.Explicit = true
-		e.Events <- event.NewEvent(u.Name, event.StatusTransactionRegistering)
+	}()
 
-		return err
-	}
-	return nil
+	return out
 }
 
 func (e *Engine) Prepare(u *unit.Unit) error {

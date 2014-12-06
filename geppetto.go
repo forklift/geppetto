@@ -11,6 +11,7 @@ import (
 )
 
 var port = flag.String("port", "5000", "Define what TCP port to bind to")
+var base = flag.String("base", "/etc/geppetto", "Service files location.")
 
 var Engine *engine.Engine
 
@@ -18,6 +19,7 @@ func main() {
 
 	flag.Parse()
 	endpoint := ":" + *port
+	unit.BasePath = *base
 
 	Engine = engine.New()
 
@@ -49,28 +51,11 @@ func start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-
-			//TODO: This transaction events only.
-			case e := <-Engine.Events:
-				w.Write([]byte(e.String()))
-			case <-done:
-				return
-			}
-		}
-	}()
-
 	units := unit.Make([]string{name})
-	err := Engine.Start(units...)
+	out := Engine.Start(units...)
 
-	if err == nil {
-		w.Write([]byte("Done."))
-		return
+	for e := range out {
+		w.Write([]byte(e.String()))
 	}
-
-	w.Write([]byte("Failed."))
-	w.Write([]byte(err.Error()))
+	w.Write([]byte("Done."))
 }
