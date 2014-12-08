@@ -15,6 +15,11 @@ import (
 
 var BasePath = "/etc/geppetto/"
 
+func New(name string) (*Unit, error) {
+	u := &Unit{}
+	return u, Read(u)
+}
+
 func Read(unit *Unit) error {
 
 	file, err := os.Open(filepath.Join(BasePath, unit.Name))
@@ -123,50 +128,62 @@ func (u *Unit) Send(s event.Status) {
 	u.status = s
 }
 
-func (u *Unit) Start() error {
+func (u *Unit) Start() chan event.Event {
 
 	u.lock.Lock()
-	defer u.lock.Unlock()
-
-	/*pipeline, errs, cancel, units := NewPipeline()
-
-	started := pipeline.Do(errs, cancel, units, pipeline.StartUnit)
+	events := make(chan event.Event)
 
 	go func() {
-		u.Deps.ForEach(func(u *Unit) {
-			units <- u
-		})
-		close(units)
+		defer u.lock.Unlock()
+		defer close(events)
+
+		/*pipeline, errs, cancel, units := NewPipeline()
+
+		started := pipeline.Do(errs, cancel, units, pipeline.StartUnit)
+
+		go func() {
+			u.Deps.ForEach(func(u *Unit) {
+				units <- u
+			})
+			close(units)
+		}()
+		//pipeline.
+		err := pipeline.Wait(errs, cancel, started)
+
+		if err != nil {
+			return err
+		}*/
+
+		var err error
+		u.process.Stdin, u.process.Stdout, u.process.Stderr, err = u.Service.ConnectIO()
+		if err != nil {
+			events <- event.New(u.Name, event.ProcessConnectFailed, err.Error())
+			return
+		}
+
+		err = u.process.Start()
+
+		if err != nil {
+			events <- event.New(u.Name, event.ProcessStartFailed, err.Error())
+			return
+		}
+
+		go u.watch()
 	}()
-	//pipeline.
-	err := pipeline.Wait(errs, cancel, started)
 
-	if err != nil {
-		return err
-	}*/
-
-	var err error
-	u.process.Stdin, u.process.Stdout, u.process.Stderr, err = u.Service.ConnectIO()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("u.process %+v\n", u.process)
-	err = u.process.Start()
-	fmt.Printf("err %+v\n", err)
-	fmt.Println("started...")
-
-	if err != nil {
-		return err
-	}
-
-	go u.watch()
-
-	return nil
+	return events
 }
 
-func (u *Unit) signal(s syscall.Signal) error {
-	return u.process.Process.Signal(s)
+func (u *Unit) Kill() chan event.Event {
+	out := make(chan event.Event)
+
+	go func() {
+		u.process.Process.Signal(syscall.SIGKILL)
+	}()
+	return out
+}
+func (u *Unit) Signal(s syscall.Signal) {
+	u.signals <- s
 }
 
 func (u *Unit) watch() {
@@ -182,6 +199,8 @@ func (u *Unit) watch() {
 		case e := <-u.Events:
 			_ = e
 		case s := <-u.signals:
+			err := u.process.Process.Signal(s)
+			_ = err
 			_ = s
 		case err := <-err:
 			_ = err

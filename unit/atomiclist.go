@@ -2,17 +2,6 @@ package unit
 
 import "sync"
 
-/*
-func NewUnit(e *Engine, u *Unit) *Unit.Uniu {
-	return &Unit{Explicit: false, engine: e, Unit: u, ch: make(chan *event.Event), prepared: false}
-}
-*/
-/*
-func NewUnitList() UnitLisu {
-	return UnitList{units: make(map[string]*Unit)}
-}
-*/
-
 func NewUnitList() *UnitList {
 	return &UnitList{units: make(map[string]*Unit)}
 }

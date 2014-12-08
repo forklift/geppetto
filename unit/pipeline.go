@@ -1,9 +1,6 @@
 package unit
 
-import (
-	"fmt"
-	"sync"
-)
+import "sync"
 
 func NewPipeline() (Pipeline, chan error, chan struct{}, chan *Unit) {
 	return Pipeline{}, make(chan error), make(chan struct{}), make(chan *Unit)
@@ -50,7 +47,6 @@ func (p Pipeline) Do(errs chan error, cancel chan struct{}, units <-chan *Unit, 
 
 	go func() {
 		defer close(prepared)
-		defer fmt.Println("End.")
 		//TODO: We can forkout a new goroutines for every "task", but is it worth it? (similar to "merge").
 		//With "attachDeps" totally makes this worthy?
 		for unit := range units {
@@ -100,6 +96,7 @@ func (p Pipeline) Merge(transactionChans ...<-chan *Unit) <-chan *Unit {
 func (p Pipeline) Wait(errs chan error, cancel chan struct{}, input <-chan *Unit) error {
 
 	//Wait for error or end.
+	//TODO: Timeout?
 	for {
 		select {
 		case err := <-errs:
@@ -113,7 +110,6 @@ func (p Pipeline) Wait(errs chan error, cancel chan struct{}, input <-chan *Unit
 			}
 		}
 	}
-	//TODO: Timeout?
 	//TODO: We shouldn't really ever reach here. Panic? Error?
 	return nil
 }
@@ -130,10 +126,7 @@ func (p Pipeline) PrepareUnit(u *Unit) error {
 }
 
 func (p Pipeline) StartUnit(u *Unit) error {
-	err := u.Start()
-	if err != nil {
-		return err
-	}
+	u.Start()
 	return nil
 }
 

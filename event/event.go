@@ -1,7 +1,5 @@
 package event
 
-import "sync"
-
 type Status string
 
 func (s Status) Error() string {
@@ -30,69 +28,41 @@ const (
 )
 
 const (
-	StatusLoaded                 Status = "Loaded."
-	StatusStartingService        Status = "Starting Service."
-	StatusFailed                 Status = "What a shame. Failed."
-	StatusAlreadyLoaded          Status = "Already Loaded."
-	StatusTransactionRegistering Status = "Registering Transaction."
-	StatusTransactionRegistered  Status = "Registering Transaction."
-	StatusBye                    Status = "Bye."
+	//General Errors.
+	ForbiddenOperation Status = "Forbidden Operation."
+
+	//Process Status
+	ProcessConnectFailed Status = "Failed to connect IO."
+	ProcessStartFailed   Status = "Failed to start process."
+	ProcessRunning       Status = "Process Running."
+
+	//Unit Status
+	UnitStarting        Status = "Starting Unit."
+	UnitLoading         Status = "Loading Unit."
+	UnitActive          Status = "Unit Active."
+	UnitDead            Status = "Unit Dead."
+	UnitLoadingFailed   Status = "Unit Load failed."
+	UnitNotLoaded       Status = "Unit Not Loaded."
+	UnitAlreadyLoaded   Status = "Unit Already loaded."
+	UnitPreparingFailed Status = "Unit Failed to prepare."
+	UnitRegistering     Status = "Registering Unit."
+	UnitDeregistered    Status = "Dergistered Unit."
+
+	StatusExitSuccess Status = "Exit."
+	StatusExitCrash   Status = "Exit."
+	StatusLoaded      Status = "Loaded."
 )
 
-func New(from string, status Status) Event {
-	return Event{from, status}
+func New(from string, status Status, details string) Event {
+	return Event{from, status, details}
 }
 
 type Event struct {
-	from   string
-	status Status
-}
-
-func (e *Event) From() string {
-	return e.from
-}
-
-func (e *Event) Status() Status {
-	return e.status
+	From    string
+	Status  Status
+	Details string
 }
 
 func (e *Event) String() string {
-	return string(e.Status())
-}
-
-func NewPipe() *Pipe {
-	return &Pipe{chans: make(map[string]chan<- Event)}
-}
-
-type Pipe struct {
-	sync.Mutex
-	chans map[string]chan<- Event
-}
-
-func (p *Pipe) Emit(e Event) {
-	p.Lock()
-	defer p.Unlock()
-
-	var wg sync.WaitGroup
-	wg.Add(len(p.chans))
-
-	for _, ch := range p.chans {
-		go func() {
-			ch <- e
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-}
-
-func (p *Pipe) Add(name string, ch chan Event) {
-	p.Lock()
-	defer p.Unlock()
-	p.chans[name] = ch
-}
-
-func (p *Pipe) Drop(name string) {
-	p.Lock()
-	defer p.Unlock()
-	delete(p.chans, name)
+	return string(e.Status)
 }

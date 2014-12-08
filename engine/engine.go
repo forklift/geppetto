@@ -11,19 +11,20 @@ import (
 func New() *Engine {
 
 	e := &Engine{
+		name:   "Geppetto",
 		Units:  unit.NewUnitList(),
-		Events: make(chan *event.Event),
+		Events: make(chan event.Event),
 	}
 
 	return e
 }
 
 type Engine struct {
-
+	name string
 	//All le transactions.
 	Units *unit.UnitList
 
-	Events chan *event.Event
+	Events chan event.Event
 
 	//Internals.
 	//One transaction au a time
@@ -35,46 +36,89 @@ func (e *Engine) Attach(u *unit.Unit) error {
 	return nil
 }
 
-func (e *Engine) Start(units ...*unit.Unit) chan *event.Event {
+func (e *Engine) Start(name string) chan event.Event {
 
-	out := make(chan *event.Event)
+	out := make(chan event.Event)
 	pipe := event.NewPipe()
 	pipe.Add("Transaction", out)
-	pipe.Add("Geppetto", e.Events)
+	pipe.Add(e.name, e.Events)
 
 	go func() {
-		pipe.Emit(event.New("Geppetto", event.StatusStartingService))
-		for _, u := range units {
+		defer close(out)
+		//Mark it as explicit.
+		var u *unit.Unit
 
-			if ut, ok := e.Units.Get(u.Name); ok {
-				pipe.Emit(event.New(u.Name, event.StatusAlreadyLoaded))
-				u = ut
-			} else {
-				err := e.Prepare(u)
-				fmt.Printf("err %+v\n", err)
-				if err != nil {
-					pipe.Emit(event.New(u.Name, event.StatusFailed))
-					break
-				}
+		pipe.Emit(event.New(e.name, event.UnitLoading, name))
+		if u, ok := e.Units.Get(name); ok {
+			pipe.Emit(event.New(e.name, event.UnitAlreadyLoaded, u.Name))
+		} else {
+			u, err := unit.New(name)
 
-				u.Listeners.Add("Geppetto", e.Events)
-				err = u.Start()
+			if err != nil {
+				//FIXME: too many parens. Define IO vs Parse error Events?
+				pipe.Emit(event.New(u.Name, event.UnitLoadingFailed, fmt.Sprintf("Unit %s: %s", u.Name, err.Error())))
+				return
 			}
-			u.Explicit = true
-			pipe.Emit(event.New(u.Name, event.StatusTransactionRegistering))
-			u.Start()
-
 		}
-		close(out)
+
+		//TODO: Make this none blockiing and pipe the events out to pipe.
+		err := e.Prepare(u)
+		if err != nil {
+			pipe.Emit(event.New(u.Name, event.UnitPreparingFailed, err.Error()))
+			return
+		}
+
+		if !u.Explicit {
+			u.Explicit = true
+			pipe.Emit(event.New(e.name, event.UnitRegistering, u.Name))
+		}
+
+		//This is blocking.
+		pipe.Pipe(u.Start())
+
+		//Add Engine to the unit listeners.
+		u.Listeners.Add(e.name, u.Events)
 	}()
 
 	return out
 }
 
+func (e *Engine) Kill(name string) chan event.Event {
+
+	out := make(chan event.Event)
+	pipe := event.NewPipe()
+	pipe.Add("Transaction", out)
+	pipe.Add(e.name, e.Events)
+
+	go func() {
+		defer close(out)
+
+		u, ok := e.Units.Get(name)
+		if !ok {
+			pipe.Emit(event.New(e.name, event.UnitNotLoaded, u.Name))
+			return
+		}
+
+		if !u.Explicit {
+			out <- event.New(e.name, event.ForbiddenOperation, "Unit is a child. Won't compley. Talk to parents.")
+			return
+		}
+
+		u.Explicit = false
+		pipe.Emit(event.New(e.name, event.UnitDeregistered, u.Name))
+
+		if u.Listeners.Count() > 1 {
+			out <- event.New(e.name, event.ForbiddenOperation, "Unit is a dependency now.")
+			return
+		}
+		pipe.Pipe(u.Kill())
+	}()
+
+	return out
+}
 func (e *Engine) Prepare(u *unit.Unit) error {
 
-	//Mark it as user package.
-	u.Explicit = true
+	//e.Emit(event.New(u.Name, event.UnitPreparingFailed, u.Name, err))
 
 	pipeline, errs, cancel, units := unit.NewPipeline()
 

@@ -1,0 +1,16 @@
+[Meta]
+Geppetoo=0.1.0
+Description=Forklift Server Daemon
+#network.service syslog.service
+#=syslog.service network.service
+Wants=
+Requires=
+
+After=
+
+[Service]
+Type=simple
+User=go
+Group=go
+WorkingDirectory=/home/go/
+ExecStart=fl server

@@ -1,6 +1,7 @@
 package unit
 
 import (
+	"io"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -62,15 +63,14 @@ type Service struct {
 	// "file", "tcp", "unix", "unixgram", "udp", and "tls".
 	// examples: `file://var/log/Unit`, `tls://feeds.example.tld:443`, `unix://var/run/myunit.sock`
 	// if nothing given, a null device will be used.
-	Stdin string //io.Reader
-	stdin *unifiedio.IO
+	Stdin string
+	stdin *unifiedio.ReadCloser
 
-	Stdout string //io.Writer
-	stdout *unifiedio.IO
+	Stdout string
+	stdout *unifiedio.WriteCloser
 
-	//TODO: Logging.
-	Stderr string //io.Writer
-	stderr *unifiedio.IO
+	Stderr string
+	stderr *unifiedio.WriteCloser
 }
 
 func (s *Service) Prepare() error {
@@ -81,27 +81,23 @@ func (s *Service) Prepare() error {
 		s.ExecStart, err = exec.LookPath(s.ExecStart)
 	}
 
-	for url, io := range map[string]*unifiedio.IO{s.Stdin: s.stdin, s.Stdout: s.stdout, s.Stderr: s.stderr} {
+	s.stdin = &unifiedio.ReadCloser{}
+	s.stdout = &unifiedio.WriteCloser{}
+	s.stderr = &unifiedio.WriteCloser{}
 
-		if url == "" {
-			continue
-		}
-		o, err := unifiedio.New(url)
+	for url, io := range map[string]unifiedio.IO{s.Stdin: s.stdin, s.Stdout: s.stdout, s.Stderr: s.stderr} {
+		err := io.SetPath(url)
 		if err != nil {
 			return nil
 		}
-		*io = *o
 	}
 
 	return err
 }
 
-func (s *Service) ConnectIO() (*unifiedio.IO, *unifiedio.IO, *unifiedio.IO, error) {
-	for _, i := range []*unifiedio.IO{s.stdin, s.stdout, s.stderr} {
+func (s *Service) ConnectIO() (io.Reader, io.Writer, io.Writer, error) {
 
-		if i == nil {
-			continue
-		}
+	for _, i := range []unifiedio.IO{s.stdin, s.stdout, s.stderr} {
 
 		if err := i.Connect(); err != nil {
 			return nil, nil, nil, err
@@ -116,7 +112,7 @@ func (s *Service) CloseIO() []error {
 	var errs []error
 
 	//Close connections.
-	for _, i := range []*unifiedio.IO{s.stdin, s.stdout, s.stderr} {
+	for _, i := range []unifiedio.IO{s.stdin, s.stdout, s.stderr} {
 		if i != nil {
 			err := i.Close()
 			if err != nil {
