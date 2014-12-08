@@ -39,8 +39,8 @@ const (
 	StatusBye                    Status = "Bye."
 )
 
-func New(from string, status Status) *Event {
-	return &Event{from, status}
+func New(from string, status Status) Event {
+	return Event{from, status}
 }
 
 type Event struct {
@@ -61,19 +61,18 @@ func (e *Event) String() string {
 }
 
 func NewPipe() *Pipe {
-	return &Pipe{chans: make(map[string]chan<- *Event)}
+	return &Pipe{chans: make(map[string]chan<- Event)}
 }
 
 type Pipe struct {
 	sync.Mutex
-	chans map[string]chan<- *Event
+	chans map[string]chan<- Event
 }
 
-func (p *Pipe) Emit(e *Event) {
+func (p *Pipe) Emit(e Event) {
 	p.Lock()
 	defer p.Unlock()
 
-	//TODO: Should we wait for every transaction to process the event before sending another event?
 	var wg sync.WaitGroup
 	wg.Add(len(p.chans))
 
@@ -86,7 +85,7 @@ func (p *Pipe) Emit(e *Event) {
 	wg.Wait()
 }
 
-func (p *Pipe) Add(name string, ch chan *Event) {
+func (p *Pipe) Add(name string, ch chan Event) {
 	p.Lock()
 	defer p.Unlock()
 	p.chans[name] = ch

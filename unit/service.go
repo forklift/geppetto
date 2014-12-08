@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/forklift/geppetto/unifiedio"
+	"github.com/forklift/geppetto/unit/unifiedio"
 	//TODO: Port to GO 1.4, us /x/sys/unix
 	"github.com/forklift/geppetto/unit/sys/group"
 )

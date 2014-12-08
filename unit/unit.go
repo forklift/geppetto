@@ -51,12 +51,13 @@ type Unit struct {
 
 	//The actuall process on system and it's attributes.
 	process *exec.Cmd
+	signals chan syscall.Signal
 
 	//internals
 	prepared bool
 
 	//Transaction
-	Ch        chan *event.Event
+	Events    chan event.Event
 	Listeners *event.Pipe
 
 	Deps *UnitList
@@ -72,7 +73,9 @@ func (u *Unit) Prepare() error {
 	}
 
 	u.Listeners = event.NewPipe()
-	u.Ch = make(chan *event.Event)
+	u.Events = make(chan event.Event)
+
+	u.signals = make(chan syscall.Signal)
 
 	var err error
 
@@ -149,7 +152,7 @@ func (u *Unit) Start() error {
 	}
 
 	fmt.Printf("u.process %+v\n", u.process)
-	err = u.process.Run()
+	err = u.process.Start()
 	fmt.Printf("err %+v\n", err)
 	fmt.Println("started...")
 
@@ -159,21 +162,30 @@ func (u *Unit) Start() error {
 
 	go u.watch()
 
-	err = u.process.Wait()
-	fmt.Printf("err %+v\n", err)
-	return err
+	return nil
+}
 
-	go func() {
-		err := u.process.Wait()
-		_ = err
-		u.Ch <- event.New(u.Name, event.StatusBye)
-	}()
-	return err
+func (u *Unit) signal(s syscall.Signal) error {
+	return u.process.Process.Signal(s)
 }
 
 func (u *Unit) watch() {
-	for e := range u.Ch {
-		u.Listeners.Emit(e)
-		//What to do with events?
+
+	err := make(chan error)
+	go func() {
+		err <- u.process.Wait()
+		close(err)
+	}()
+
+	for {
+		select {
+		case e := <-u.Events:
+			_ = e
+		case s := <-u.signals:
+			_ = s
+		case err := <-err:
+			_ = err
+			return
+		}
 	}
 }
