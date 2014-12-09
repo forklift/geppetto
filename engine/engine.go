@@ -129,7 +129,7 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	units <- u
 
 	//Wait for all units to have their Deps proccessed.
-	//count.Wait()
+	count.Wait()
 
 	//Close the pipeline.
 	close(units)
