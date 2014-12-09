@@ -61,7 +61,7 @@ func (e *Engine) Start(name string) chan event.Event {
 			}
 		}
 
-		//TODO: Make this none blockiing and pipe the events out to pipe.
+		//TODO: Make this none blockiing and pipe the events out to pipe similar to u.Start
 		err := e.Prepare(u)
 		if err != nil {
 			pipe.Emit(event.New(u.Name, event.UnitPreparingFailed, err.Error()))
@@ -85,11 +85,20 @@ func (e *Engine) Start(name string) chan event.Event {
 
 func (e *Engine) Prepare(u *unit.Unit) error {
 
+	out := make(chan event.Event)
+	pipe := event.NewPipe()
+	pipe.Add("Transaction", out)
+	pipe.Add(e.name, e.Events)
 	//e.Emit(event.New(u.Name, event.UnitPreparingFailed, u.Name, err))]
 	pipeline, errs, cancel, units := unit.NewPipeline()
 
+	var count sync.WaitGroup
+	all := pipeline.Do(errs, cancel, units, func(*unit.Unit) error {
+		count.Add(1)
+		return nil
+	})
 	//Filter loaded units.
-	loaded, fresh := pipeline.Filter(errs, cancel, units, e.Units.Has)
+	loaded, fresh := pipeline.Filter(errs, cancel, all, e.Units.Has)
 
 	//Load the fresh units.
 	fresh = pipeline.Do(errs, cancel, fresh, unit.Read)
@@ -98,11 +107,17 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	fresh = pipeline.Do(errs, cancel, fresh, e.Attach)
 
 	//Yup.
-	all := pipeline.Merge(loaded, fresh)
+	all = pipeline.Merge(loaded, fresh)
 
-	//var wg sync.WaitGroup
 	//Emit deps to units channel.
-	//all = pipeline.Do(errs, cancel, all, pipeline.RequestDeps(units, wg))
+	all = pipeline.Do(errs, cancel, all, pipeline.RequestDeps(units))
+
+	//Once a unit is here, it has it's Deps already sent out.
+	//Drop the count.
+	all = pipeline.Do(errs, cancel, all, func(*unit.Unit) error {
+		count.Done()
+		return nil
+	})
 
 	//Prepare
 	prepared := pipeline.Do(errs, cancel, all, pipeline.PrepareUnit)
@@ -112,9 +127,14 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 
 	// Start the pipeline...
 	units <- u
-	//close units on wg or cancel.
-	close(units) //TODO: What to do with the RequestDeps? Counter! sync.Workgroup?
 
+	//Wait for all units to have their Deps proccessed.
+	//count.Wait()
+
+	//Close the pipeline.
+	close(units)
+
+	//Wait for the pipeline to finish.
 	return pipeline.Wait(errs, cancel, prepared)
 }
 
@@ -130,7 +150,7 @@ func (e *Engine) Stop(name string) chan event.Event {
 
 		u, ok := e.Units.Get(name)
 		if !ok {
-			pipe.Emit(event.New(e.name, event.UnitNotLoaded, u.Name))
+			pipe.Emit(event.New(e.name, event.UnitNotLoaded, name))
 			return
 		}
 
@@ -148,6 +168,14 @@ func (e *Engine) Stop(name string) chan event.Event {
 		}
 
 		pipe.Pipe(u.Stop(e.name))
+		u.Deps.ForEach(func(u *unit.Unit) {
+			if u.Listeners.Count() < 2 {
+				e.Units.Drop(name)
+			}
+		})
+		e.Units.Drop(name)
+
+		//TODO: Clean up dropping
 	}()
 
 	return out

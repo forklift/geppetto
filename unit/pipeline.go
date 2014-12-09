@@ -52,6 +52,7 @@ func (p Pipeline) Do(errs chan error, cancel chan struct{}, units <-chan *Unit, 
 		for unit := range units {
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				err := do(unit)
 				if err != nil {
 					errs <- err

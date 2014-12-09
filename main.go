@@ -80,6 +80,7 @@ func stop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Write([]byte("Hello"))
 	for _, name := range names {
 		for e := range Engine.Stop(name) {
 			w.Write([]byte(e.String()))
