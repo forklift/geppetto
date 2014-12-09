@@ -1,8 +1,8 @@
 package event
 
-type Status string
+type Type string
 
-func (s Status) Error() string {
+func (s Type) Error() string {
 	return string(s)
 }
 
@@ -29,40 +29,68 @@ const (
 
 const (
 	//General Errors.
-	ForbiddenOperation Status = "Forbidden Operation."
+	ForbiddenOperation Type = "Forbidden Operation."
 
-	//Process Status
-	ProcessConnectFailed Status = "Failed to connect IO."
-	ProcessStartFailed   Status = "Failed to start process."
-	ProcessRunning       Status = "Process Running."
+	//Process Type
+	ProcessConnectFailed Type = "Failed to connect IO."
+	ProcessStartFailed   Type = "Failed to start process."
+	ProcessRunning       Type = "Process Running."
+	ProcessExited        Type = "Process Exited."
 
-	//Unit Status
-	UnitStarting        Status = "Starting Unit."
-	UnitLoading         Status = "Loading Unit."
-	UnitActive          Status = "Unit Active."
-	UnitDead            Status = "Unit Dead."
-	UnitLoadingFailed   Status = "Unit Load failed."
-	UnitNotLoaded       Status = "Unit Not Loaded."
-	UnitAlreadyLoaded   Status = "Unit Already loaded."
-	UnitPreparingFailed Status = "Unit Failed to prepare."
-	UnitRegistering     Status = "Registering Unit."
-	UnitDeregistered    Status = "Dergistered Unit."
+	//Unit Type
+	UnitStarting        Type = "Starting Unit."
+	UnitLoading         Type = "Loading Unit."
+	UnitActive          Type = "Unit Active."
+	UnitDead            Type = "Unit Dead."
+	UnitLoadingFailed   Type = "Unit Load failed."
+	UnitNotLoaded       Type = "Unit Not Loaded."
+	UnitAlreadyLoaded   Type = "Unit Already loaded."
+	UnitPreparingFailed Type = "Unit Failed to prepare."
+	UnitRegistering     Type = "Registering Unit."
+	UnitDeregistered    Type = "Dergistered Unit."
+	UnitStopping        Type = "Unit Recieved requested to Stop."
+	UnitStopWatch       Type = "Process Monitoring stopped."
 
-	StatusExitSuccess Status = "Exit."
-	StatusExitCrash   Status = "Exit."
-	StatusLoaded      Status = "Loaded."
+	StatusExitSuccess Type = "Exit."
+	StatusExitCrash   Type = "Exit."
+	StatusType             = "Loaded."
 )
 
-func New(from string, status Status, details string) Event {
-	return Event{from, status, details}
+func New(from string, status Type, details interface{}) Event {
+
+	d := Details{}
+	if e, ok := details.(error); ok {
+		d.err = e
+	} else if s, ok := details.(string); ok {
+		d.str = s
+	}
+	//TODO: Convert int to string and et al.
+
+	return Event{from, status, d}
+}
+
+type Details struct {
+	err error
+	str string
 }
 
 type Event struct {
 	From    string
-	Status  Status
-	Details string
+	Type    Type
+	Payload Details
 }
 
 func (e *Event) String() string {
-	return string(e.Status)
+	return string(e.Payload.str)
+}
+
+func (e *Event) Error() error {
+	return e.Payload.err
+}
+
+func (e *Event) Details() string {
+	if e.Payload.err != nil {
+		return e.Payload.err.Error()
+	}
+	return e.Payload.str
 }

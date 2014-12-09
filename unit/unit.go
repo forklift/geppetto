@@ -16,7 +16,7 @@ import (
 var BasePath = "/etc/geppetto/"
 
 func New(name string) (*Unit, error) {
-	u := &Unit{}
+	u := &Unit{Name: name}
 	return u, Read(u)
 }
 
@@ -49,14 +49,14 @@ type Unit struct {
 	// Reserved names `gGod`, `gCurrentTransaction`
 	Name string
 
-	status event.Status
+	status event.Type
 
 	Meta    Meta
 	Service Service
 
 	//The actuall process on system and it's attributes.
-	process *exec.Cmd
-	signals chan syscall.Signal
+	process           *exec.Cmd
+	processExitStatus chan error
 
 	//internals
 	prepared bool
@@ -80,8 +80,6 @@ func (u *Unit) Prepare() error {
 	u.Listeners = event.NewPipe()
 	u.Events = make(chan event.Event)
 
-	u.signals = make(chan syscall.Signal)
-
 	var err error
 
 	err = u.Meta.Prepare()
@@ -95,6 +93,8 @@ func (u *Unit) Prepare() error {
 	}
 
 	cred, err := u.Service.BuildCredentails()
+
+	u.processExitStatus = make(chan error, 1)
 
 	//TODO: Consider the arguments?
 	u.process = exec.Command(u.Service.ExecStart)
@@ -118,12 +118,12 @@ func (u *Unit) Clean() []error {
 	return u.Service.CloseIO() //TODO: Check if we have other deps.
 }
 
-func (u *Unit) Status() event.Status {
+func (u *Unit) Type() event.Type {
 	return u.status
 
 }
 
-func (u *Unit) Send(s event.Status) {
+func (u *Unit) Send(s event.Type) {
 	//TODO: Notify the channel.
 	u.status = s
 }
@@ -162,48 +162,79 @@ func (u *Unit) Start() chan event.Event {
 		}
 
 		err = u.process.Start()
+		go u.processWatch()
 
 		if err != nil {
 			events <- event.New(u.Name, event.ProcessStartFailed, err.Error())
 			return
 		}
 
-		go u.watch()
 	}()
 
 	return events
 }
 
-func (u *Unit) Kill() chan event.Event {
+func (u *Unit) Stop(sender string) chan event.Event {
 	out := make(chan event.Event)
 
 	go func() {
-		u.process.Process.Signal(syscall.SIGKILL)
+		u.stop(out, sender)
+		close(out)
 	}()
+
 	return out
 }
-func (u *Unit) Signal(s syscall.Signal) {
-	u.signals <- s
+
+func (u *Unit) stop(out chan event.Event, sender string) error {
+
+	u.Listeners.Add("transaction-"+sender, out)
+	defer u.Listeners.Drop("transaction-" + sender)
+
+	out <- event.New(u.Name, event.UnitStopping, sender)
+
+	//TODO: Check Deps.
+	//If multiple. Drop the sender from Listners and return nil.
+
+	pipeline, errs, cancel, units := NewPipeline()
+
+	stopped := pipeline.Do(errs, cancel, units, func(u *Unit) error {
+		return u.stop(out, u.Name)
+	})
+
+	go u.Deps.ForEach(func(u *Unit) {
+		units <- u
+	}).Then(func() { close(units) })
+
+	err := pipeline.Wait(errs, cancel, stopped)
+
+	if err != nil {
+		return err
+	}
+
+	u.process.Process.Signal(syscall.SIGKILL)
+
+	//Wait for process to exit.
+	//TODO: Timeout!
+	exitStatus := <-u.processExitStatus
+
+	return exitStatus
+
 }
 
-func (u *Unit) watch() {
+func (u *Unit) processWatch() {
+	u.processExitStatus <- u.process.Wait()
+	close(u.processExitStatus)
+}
 
-	err := make(chan error)
-	go func() {
-		err <- u.process.Wait()
-		close(err)
-	}()
+func (u *Unit) unitWatch() {
 
 	for {
 		select {
 		case e := <-u.Events:
-			_ = e
-		case s := <-u.signals:
-			err := u.process.Process.Signal(s)
-			_ = err
-			_ = s
-		case err := <-err:
-			_ = err
+			switch e.Type {
+			}
+		case exitStatus := <-u.processExitStatus:
+			_ = exitStatus
 			return
 		}
 	}

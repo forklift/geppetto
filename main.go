@@ -33,6 +33,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_ping", pong)
 	mux.HandleFunc("/start", start)
+	mux.HandleFunc("/stop", stop)
 
 	log.Printf("Listening at %s", endpoint)
 	log.Fatal(http.ListenAndServe(endpoint, mux))
@@ -65,6 +66,30 @@ func start(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Request End.")
 }
 
+func stop(w http.ResponseWriter, r *http.Request) {
+
+	fmt.Println("Request.")
+
+	defer w.Write([]byte("\nDone."))
+
+	names := strings.Split(r.FormValue("units"), ",")
+
+	if len(names) == 0 {
+		w.WriteHeader(400)
+		w.Write([]byte("Error: No Units to start."))
+		return
+	}
+
+	for _, name := range names {
+		for e := range Engine.Stop(name) {
+			w.Write([]byte(e.String()))
+		}
+	}
+
+	fmt.Println("Request End.")
+}
+
+/*
 func signal(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Request.")
@@ -101,3 +126,5 @@ func signal(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Request End.")
 }
+
+*/

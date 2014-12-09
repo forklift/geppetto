@@ -18,20 +18,16 @@ func (ul *UnitList) Add(u *Unit) {
 	ul.units[u.Name] = u
 }
 
-func (ul *UnitList) addTo(list *UnitList) {
+func (ul *UnitList) Merge(list *UnitList) {
 	ul.lock.Lock()
-	defer ul.lock.Unlock()
+	list.lock.Lock()
 
-	ul.ForEach(func(u *Unit) {
-		list.units[u.Name] = u
+	defer ul.lock.Unlock()
+	defer list.lock.Unlock()
+
+	list.foreach(func(u *Unit) {
+		ul.units[u.Name] = u
 	})
-}
-
-func (ul *UnitList) Append(list *UnitList) {
-	ul.lock.Lock()
-	defer ul.lock.Unlock()
-
-	list.addTo(ul)
 }
 
 func (ul *UnitList) Get(name string) (*Unit, bool) {
@@ -56,9 +52,18 @@ func (ul *UnitList) Has(unit *Unit) bool {
 	return ok
 }
 
-func (ul *UnitList) ForEach(do func(*Unit)) {
+func (ul *UnitList) ForEach(do func(*Unit)) *UnitList {
 	ul.lock.Lock()
 	defer ul.lock.Unlock()
+	ul.foreach(do)
+	return ul
+}
+
+func (ul *UnitList) Then(do func()) {
+	do()
+}
+
+func (ul *UnitList) foreach(do func(*Unit)) {
 	for _, u := range ul.units {
 		do(u)
 	}

@@ -46,14 +46,14 @@ func (e *Engine) Start(name string) chan event.Event {
 	go func() {
 		defer close(out)
 		//Mark it as explicit.
-		var u *unit.Unit
+		u := &unit.Unit{Name: name}
 
 		pipe.Emit(event.New(e.name, event.UnitLoading, name))
-		if u, ok := e.Units.Get(name); ok {
+		if ut, ok := e.Units.Get(u.Name); ok {
 			pipe.Emit(event.New(e.name, event.UnitAlreadyLoaded, u.Name))
+			u = ut
 		} else {
-			u, err := unit.New(name)
-
+			err := unit.Read(u)
 			if err != nil {
 				//FIXME: too many parens. Define IO vs Parse error Events?
 				pipe.Emit(event.New(u.Name, event.UnitLoadingFailed, fmt.Sprintf("Unit %s: %s", u.Name, err.Error())))
@@ -83,7 +83,42 @@ func (e *Engine) Start(name string) chan event.Event {
 	return out
 }
 
-func (e *Engine) Kill(name string) chan event.Event {
+func (e *Engine) Prepare(u *unit.Unit) error {
+
+	//e.Emit(event.New(u.Name, event.UnitPreparingFailed, u.Name, err))]
+	pipeline, errs, cancel, units := unit.NewPipeline()
+
+	//Filter loaded units.
+	loaded, fresh := pipeline.Filter(errs, cancel, units, e.Units.Has)
+
+	//Load the fresh units.
+	fresh = pipeline.Do(errs, cancel, fresh, unit.Read)
+
+	//Attach the fresh ones to engine.
+	fresh = pipeline.Do(errs, cancel, fresh, e.Attach)
+
+	//Yup.
+	all := pipeline.Merge(loaded, fresh)
+
+	//var wg sync.WaitGroup
+	//Emit deps to units channel.
+	//all = pipeline.Do(errs, cancel, all, pipeline.RequestDeps(units, wg))
+
+	//Prepare
+	prepared := pipeline.Do(errs, cancel, all, pipeline.PrepareUnit)
+
+	//Attach deps.
+	//Pass the wait group.
+
+	// Start the pipeline...
+	units <- u
+	//close units on wg or cancel.
+	close(units) //TODO: What to do with the RequestDeps? Counter! sync.Workgroup?
+
+	return pipeline.Wait(errs, cancel, prepared)
+}
+
+func (e *Engine) Stop(name string) chan event.Event {
 
 	out := make(chan event.Event)
 	pipe := event.NewPipe()
@@ -111,41 +146,9 @@ func (e *Engine) Kill(name string) chan event.Event {
 			out <- event.New(e.name, event.ForbiddenOperation, "Unit is a dependency now.")
 			return
 		}
-		pipe.Pipe(u.Kill())
+
+		pipe.Pipe(u.Stop(e.name))
 	}()
 
 	return out
-}
-func (e *Engine) Prepare(u *unit.Unit) error {
-
-	//e.Emit(event.New(u.Name, event.UnitPreparingFailed, u.Name, err))
-
-	pipeline, errs, cancel, units := unit.NewPipeline()
-
-	//Filter loaded units.
-	loaded, fresh := pipeline.Filter(errs, cancel, units, e.Units.Has)
-
-	//Load the fresh units.
-	fresh = pipeline.Do(errs, cancel, fresh, unit.Read)
-
-	//Attach the fresh ones to engine.
-	fresh = pipeline.Do(errs, cancel, fresh, e.Attach)
-
-	//Yup.
-	all := pipeline.Merge(loaded, fresh)
-
-	//Emit deps to units channel.
-	//all = pipeline.Do(errs, cancel, all, pipeline.RequestDeps(units))
-
-	//Prepare
-	prepared := pipeline.Do(errs, cancel, all, pipeline.PrepareUnit)
-
-	//Attach deps.
-	withdeps := pipeline.Do(errs, cancel, prepared, pipeline.AttachDeps(prepared))
-
-	// Start the pipeline...
-	units <- u
-	close(units) //TODO: What to do with the RequestDeps?
-
-	return pipeline.Wait(errs, cancel, withdeps)
 }

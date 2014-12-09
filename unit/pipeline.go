@@ -47,22 +47,26 @@ func (p Pipeline) Do(errs chan error, cancel chan struct{}, units <-chan *Unit, 
 
 	go func() {
 		defer close(prepared)
-		//TODO: We can forkout a new goroutines for every "task", but is it worth it? (similar to "merge").
-		//With "attachDeps" totally makes this worthy?
+		var wg sync.WaitGroup
+
 		for unit := range units {
+			wg.Add(1)
+			go func() {
+				err := do(unit)
+				if err != nil {
+					errs <- err
+					return
+				}
 
-			err := do(unit)
-			if err != nil {
-				errs <- err
-				return
-			}
-
-			select {
-			case prepared <- unit:
-			case <-cancel:
-				return
-			}
+				select {
+				case prepared <- unit:
+				case <-cancel:
+					return
+				}
+			}()
 		}
+		wg.Wait()
+
 	}()
 
 	return prepared
