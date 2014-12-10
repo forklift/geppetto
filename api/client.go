@@ -26,23 +26,12 @@ func newError(status int, body []byte) *Error {
 	return &Error{Status: status, Message: string(body)}
 }
 
-func NewClient(endpoint string) (*Client, error) {
-
-	ep, err := url.Parse(endpoint)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &Client{endpoint: ep, httpConn: http.DefaultClient}, nil
-}
-
-type Client struct {
+type client struct {
 	endpoint *url.URL
 	httpConn *http.Client
 }
 
-func (client *Client) getURL(path string) string {
+func (client *client) getURL(path string) string {
 	url := strings.TrimRight(client.endpoint.String(), "/")
 	if client.endpoint.Scheme == "unix" {
 		url = ""
@@ -50,7 +39,7 @@ func (client *Client) getURL(path string) string {
 	return fmt.Sprintf("%s%s", url, path)
 }
 
-func (client *Client) do(method string, path string, data interface{}) ([]byte, int, error) {
+func (client *client) do(method string, path string, data interface{}) ([]byte, int, error) {
 	var body io.Reader
 
 	if data != nil {
@@ -102,18 +91,6 @@ func (client *Client) do(method string, path string, data interface{}) ([]byte, 
 	return replay, res.StatusCode, nil
 }
 
-func (c *Client) Ping() error {
-	path := "/_ping"
-	body, status, err := c.do("GET", path, nil)
-	if err != nil {
-		return err
-	}
-	if status != http.StatusOK {
-		return newError(status, body)
-	}
-	return nil
-}
-
 /*
 //Stream
 
@@ -124,7 +101,7 @@ type jsonMessage struct {
 	Stream   string `json:"stream,omitempty"`
 }
 
-func (client *Client) stream(method, path string, headers map[string]string, in io.Reader, out io.Writer) error {
+func (client *client) stream(method, path string, headers map[string]string, in io.Reader, out io.Writer) error {
 
 	if (method == "POST" || method == "PUT") && in == nil {
 		in = bytes.NewReader(nil)
@@ -148,7 +125,7 @@ func (client *Client) stream(method, path string, headers map[string]string, in 
 		if err != nil {
 			return err
 		}
-		newConn := httputil.NewClientConn(dial, nil)
+		newConn := httputil.NewclientConn(dial, nil)
 		res, err = newConn.Do(req)
 		defer newConn.Close()
 
