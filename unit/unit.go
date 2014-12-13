@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/forklift/geppetto/event"
+	"github.com/mattn/go-shellwords"
 	"github.com/omeid/go-ini"
 )
 
@@ -97,7 +98,12 @@ func (u *Unit) Prepare() error {
 	u.processExitStatus = make(chan error, 1)
 
 	//TODO: Consider the arguments?
-	u.process = exec.Command(u.Service.ExecStart)
+	cmd, err := shellwords.Parse(u.Service.ExecStart)
+	if err != nil {
+		return err
+	}
+
+	u.process = exec.Command(cmd[0], cmd[1:]...)
 
 	u.process.Dir = u.Service.WorkingDirectory
 

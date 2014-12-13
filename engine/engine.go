@@ -38,13 +38,13 @@ func (e *Engine) Attach(u *unit.Unit) error {
 
 func (e *Engine) Start(name string) chan event.Event {
 
-	out := make(chan event.Event)
+	transaction := make(chan event.Event)
 	pipe := event.NewPipe()
-	pipe.Add("Transaction", out)
+	pipe.Add("Transaction", transaction)
 	pipe.Add(e.name, e.Events)
 
 	go func() {
-		defer close(out)
+		defer close(transaction)
 		//Mark it as explicit.
 		u := &unit.Unit{Name: name}
 
@@ -80,14 +80,14 @@ func (e *Engine) Start(name string) chan event.Event {
 		u.Listeners.Add(e.name, u.Events)
 	}()
 
-	return out
+	return transaction
 }
 
 func (e *Engine) Prepare(u *unit.Unit) error {
 
-	out := make(chan event.Event)
+	transaction := make(chan event.Event)
 	pipe := event.NewPipe()
-	pipe.Add("Transaction", out)
+	pipe.Add("Transaction", transaction)
 	pipe.Add(e.name, e.Events)
 	//e.Emit(event.New(u.Name, event.UnitPreparingFailed, u.Name, err))]
 	pipeline, errs, cancel, units := unit.NewPipeline()

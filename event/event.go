@@ -1,5 +1,7 @@
 package event
 
+import "strconv"
+
 type Type string
 
 func (s Type) Error() string {
@@ -59,12 +61,15 @@ const (
 func New(from string, status Type, details interface{}) Event {
 
 	d := Details{}
-	if e, ok := details.(error); ok {
-		d.err = e
-	} else if s, ok := details.(string); ok {
-		d.str = s
+
+	switch details.(type) {
+	case error:
+		d.err = details.(error)
+	case string:
+		d.str = details.(string)
+	case uint, int, int32, uint32, uint64, int64:
+		d.str = strconv.Itoa(details.(int))
 	}
-	//TODO: Convert int to string and et al.
 
 	return Event{from, status, d}
 }
@@ -77,20 +82,13 @@ type Details struct {
 type Event struct {
 	From    string
 	Type    Type
-	Payload Details
+	payload Details
 }
 
 func (e *Event) String() string {
-	return string(e.Payload.str)
+	return string(e.payload.str)
 }
 
 func (e *Event) Error() error {
-	return e.Payload.err
-}
-
-func (e *Event) Details() string {
-	if e.Payload.err != nil {
-		return e.Payload.err.Error()
-	}
-	return e.Payload.str
+	return e.payload.err
 }

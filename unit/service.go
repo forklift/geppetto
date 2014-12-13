@@ -81,6 +81,10 @@ func (s *Service) Prepare() error {
 		s.ExecStart, err = exec.LookPath(s.ExecStart)
 	}
 
+	if err != nil {
+		return err
+	}
+
 	s.stdin = &unifiedio.ReadCloser{}
 	s.stdout = &unifiedio.WriteCloser{}
 	s.stderr = &unifiedio.WriteCloser{}
