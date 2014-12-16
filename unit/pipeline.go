@@ -138,7 +138,7 @@ func (p Pipeline) StartUnit(u *Unit) error {
 func (p Pipeline) RequestDeps(units chan *Unit) func(*Unit) error {
 	return func(u *Unit) error {
 		u.Deps = NewUnitList()
-		for _, u := range Make(append(u.Service.Requires, u.Service.Wants...)) {
+		for _, u := range Make(append(u.Requires, u.Wants...)) {
 			units <- u
 		}
 		return nil

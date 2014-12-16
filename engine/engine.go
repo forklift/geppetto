@@ -63,14 +63,15 @@ func (e *Engine) Start(name string) chan event.Event {
 				pipe.Emit(event.New(u.Name, event.UnitLoadingFailed, fmt.Sprintf("Unit %s: %s", u.Name, err.Error())))
 				return
 			}
+			err = e.Load(u)
 		}
 
 		//TODO: Make this none blockiing and pipe the events out to pipe similar to u.Start
-		err := e.Prepare(u)
-		if err != nil {
-			pipe.Emit(event.New(u.Name, event.UnitPreparingFailed, err.Error()))
-			return
-		}
+		//err := e.Prepare(u)
+		//if err != nil {
+		//		pipe.Emit(event.New(u.Name, event.UnitPreparingFailed, err.Error()))
+		//			return
+		//		}
 
 		if !u.Explicit {
 			u.Explicit = true
@@ -87,7 +88,7 @@ func (e *Engine) Start(name string) chan event.Event {
 	return transaction
 }
 
-func (e *Engine) Prepare(u *unit.Unit) error {
+func (e *Engine) Load(u *unit.Unit) error {
 
 	transaction := make(chan event.Event)
 	pipe := event.NewPipe()
@@ -127,9 +128,6 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 		return nil
 	})
 
-	//Prepare
-	prepared := pipeline.Do(errs, cancel, all, pipeline.PrepareUnit)
-
 	//Attach deps.
 	//Pass the wait group.
 
@@ -143,7 +141,7 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	close(units)
 
 	//Wait for the pipeline to finish.
-	return pipeline.Wait(errs, cancel, prepared)
+	return pipeline.Wait(errs, cancel, all)
 }
 
 func (e *Engine) Stop(name string) chan event.Event {

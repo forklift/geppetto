@@ -1,4 +1,4 @@
-[Meta]
+[Unit]
 Geppetto=1.0.0
 Description=Simple Web Server
 #network.service syslog.service
@@ -8,9 +8,21 @@ Requires=
 
 After=
 
+[Meta]
+Port=8080
+Address=127.0.0.1
+
+[Check]
+id=web-server-check-1
+name=web server check
+script=/usr/local/bin/check_mem.py
+interval=10s
+
+
 [Service]
 Type=simple
 User=go
 Group=go
 WorkingDirectory=/home/go/go/
-ExecStart=/home/go/go/bin/web-server
+ExecStart=/home/go/go/bin/web-server 
+#-p $WEB_SERVER_Address

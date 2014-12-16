@@ -87,8 +87,9 @@ func main() {
 	log.Println("Exiting.")
 }
 
-func APIpong(w http.ResponseWriter, req *http.Request) {
+func APIpong(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
+	log.Printf("ping from %s (%s)\n", r.RemoteAddr, r.UserAgent())
 }
 
 func APIstart(w http.ResponseWriter, r *http.Request) {

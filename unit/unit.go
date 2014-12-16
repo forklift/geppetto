@@ -1,47 +1,14 @@
 package unit
 
 import (
+	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sync"
-	"syscall"
 
 	"github.com/forklift/geppetto/event"
-	"github.com/mattn/go-shellwords"
-	"github.com/omeid/go-ini"
 )
 
 var BasePath = "/etc/geppetto/services"
-
-func New(name string) (*Unit, error) {
-	u := &Unit{Name: name}
-	return u, Read(u)
-}
-
-func Read(unit *Unit) error {
-
-	file, err := os.Open(filepath.Join(BasePath, unit.Name))
-	if err != nil {
-		return err
-	}
-
-	return Parse(file, unit)
-}
-
-func Parse(reader io.Reader, unit *Unit) error {
-	return ini.NewDecoder(reader).Decode(unit)
-}
-
-func Make(names []string) []*Unit {
-	units := []*Unit{}
-	for _, name := range names {
-		units = append(units, &Unit{Name: name})
-	}
-	return units
-}
 
 type Unit struct {
 	//Unit is the "unit" files for Geppeto.
@@ -50,14 +17,33 @@ type Unit struct {
 	// Reserved names `gGod`, `gCurrentTransaction`
 	Name string
 
+	// A space-separated list of required prerequiestp. if the units listed here are not started already, they will not be started and the transaction will fail immediately.
+	Prerequests []string
+
+	// Similar to Prerequests, but the opposite. if units listed here are already started, this transaction will fail immediately.
+	Conflicts []string
+
+	// A space-separated list of required units to start with this unit, in any order. if any of these units fails, this unit will be cancneld.
+	Requires []string
+
+	// A space-separated list of required units to start with this unit, in any order. if any of these units fails, this unit will be NOT cancled if any of these units
+	// fail after a successful startup.
+	Wants []string
+
+	//TODO: Validate if Before and After values exists in Requires or Wantp.
+
+	// A space-separated list of required units to start before this unit is started. The units must exist in Requires or Wantp.
+	Before []string
+	// A space-separated list of required units to start before this unit is started. The units must exist in Requires or Wantp.
+	After []string
+
+	//Similar in to Preequirep. However in addition to this behavior, if any of the units listed suddenly disappears or fails, this unit stopp.
+	BindsTo []string
+
 	status event.Type
 
 	Meta    Meta
 	Service Service
-
-	//The actuall process on system and it's attributes.
-	process           *exec.Cmd
-	processExitStatus chan error
 
 	//internals
 	prepared bool
@@ -91,31 +77,6 @@ func (u *Unit) Prepare() error {
 	err = u.Service.Prepare()
 	if err != nil {
 		return err
-	}
-
-	cred, err := u.Service.BuildCredentails()
-
-	u.processExitStatus = make(chan error, 1)
-
-	//TODO: We need to export, $HOME, $USER, $EDITOR, et all. Should be done at Engine level, or deamon?
-	shellwords.ParseEnv = true
-	cmd, err := shellwords.Parse(u.Service.ExecStart)
-	if err != nil {
-		return err
-	}
-
-	u.process = exec.Command(cmd[0])
-	u.process.Args = cmd
-
-	u.process.Dir = u.Service.WorkingDirectory
-
-	u.process.SysProcAttr = &syscall.SysProcAttr{
-		Setsid:     true,
-		Credential: cred,
-	}
-
-	if u.Service.Chroot != "" && u.Service.Chroot != "/" {
-		u.process.SysProcAttr.Chroot = u.Service.Chroot
 	}
 
 	u.prepared = true
@@ -158,17 +119,17 @@ func (u *Unit) Start() chan event.Event {
 		}*/
 
 		var err error
-		u.process.Stdin, u.process.Stdout, u.process.Stderr, err = u.Service.ConnectIO()
+		err = u.Service.ConnectIO()
 		if err != nil {
-			events <- event.New(u.Name, event.ProcessConnectFailed, err.Error())
+			events <- event.New(u.Name, event.ServiceConnectFailed, err.Error())
 			return
 		}
 
-		err = u.process.Start()
-		go u.processWatch()
+		//err = u.process.Start()
+		//go u.processWatch()
 
 		if err != nil {
-			events <- event.New(u.Name, event.ProcessStartFailed, err.Error())
+			events <- event.New(u.Name, event.ServiceStartFailed, err.Error())
 			return
 		}
 
@@ -214,20 +175,20 @@ func (u *Unit) stop(out chan event.Event, sender string) error {
 		return err
 	}
 
-	u.process.Process.Signal(syscall.SIGKILL)
+	//u.process.Service.Signal(syscall.SIGKILL)
 
 	//Wait for process to exit.
 	//TODO: Timeout!
-	exitStatus := <-u.processExitStatus
+	exitStatus := errors.New("") // <-u.processExitStatus
 
 	return exitStatus
 
 }
 
-func (u *Unit) processWatch() {
-	u.processExitStatus <- u.process.Wait()
-	close(u.processExitStatus)
-}
+//func (u *Unit) processWatch() {
+//	u.processExitStatus <- u.process.Wait()
+//	close(u.processExitStatus)
+//}
 
 func (u *Unit) unitWatch() {
 
@@ -236,9 +197,9 @@ func (u *Unit) unitWatch() {
 		case e := <-u.Events:
 			switch e.Type {
 			}
-		case exitStatus := <-u.processExitStatus:
-			_ = exitStatus
-			return
+			//case exitStatus := <-u.processExitStatus:
+			//	_ = exitStatus
+			//		return
 		}
 	}
 }

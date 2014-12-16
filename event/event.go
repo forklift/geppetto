@@ -33,11 +33,11 @@ const (
 	//General Errors.
 	ForbiddenOperation Type = "Forbidden Operation."
 
-	//Process Type
-	ProcessConnectFailed Type = "Failed to connect IO."
-	ProcessStartFailed   Type = "Failed to start process."
-	ProcessRunning       Type = "Process Running."
-	ProcessExited        Type = "Process Exited."
+	//Service Type
+	ServiceConnectFailed Type = "Failed to connect IO."
+	ServiceStartFailed   Type = "Failed to start process."
+	ServiceRunning       Type = "Process Running."
+	ServiceExited        Type = "Process Exited."
 
 	//Unit Type
 	UnitStarting        Type = "Starting Unit."
