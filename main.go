@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 
 	"github.com/forklift/geppetto/engine"
+	"github.com/forklift/geppetto/event"
 	"github.com/forklift/geppetto/unit"
 )
 
 var (
-	host  = flag.String("host", ":9090", "Define what TCP port to bind to")
-	path  = flag.String("path", "/etc/geppetto", "Units files path.")
-	start = flag.String("start", "", "List of units to start by defualt.")
+	host     = flag.String("host", ":9090", "Define what TCP port to bind to")
+	base     = flag.String("path", "/etc/geppetto", "Geppetto files base path.")
+	start    = flag.String("start", "", "List of units to start by defualt.")
+	insecure = flag.Bool("insecure", false, "Don't use TLS for communications.")
 )
 
 var Engine *engine.Engine
@@ -23,9 +26,12 @@ var Engine *engine.Engine
 func main() {
 
 	flag.Parse()
-	unit.BasePath = *path
+
+	unit.BasePath = path.Join(*base, "services")
 
 	Engine = engine.New()
+	engineLog := make(chan event.Event)
+	Engine.Listeners.Add("logs", engineLog)
 
 	mux := http.NewServeMux()
 
@@ -34,25 +40,36 @@ func main() {
 	mux.HandleFunc("/stop", APIstop)
 
 	var wg sync.WaitGroup
-	go func() {
-		wg.Add(1)
-		defer wg.Done()
 
-		for e := range Engine.Events {
-			fmt.Println(e)
+	//Log the events.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for e := range engineLog {
+			log.Println(e)
 		}
 	}()
 
+	//Start the server.
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 
 		log.Printf("Listening at %s", *host)
-		log.Fatal(http.ListenAndServe(*host, mux))
+		var err error
+		if *insecure {
+			err = http.ListenAndServe(*host, mux)
+		} else {
+			err = http.ListenAndServeTLS(*host, path.Join(*base, "cert.pem"), path.Join(*base, "key.pem"), mux)
+		}
+
+		log.Fatal(err)
+
 	}()
 
+	//Start the services...
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		if *start == "" {
 			return

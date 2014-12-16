@@ -2,13 +2,12 @@ package api
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
 )
@@ -28,15 +27,20 @@ func newError(status int, body []byte) *Error {
 
 type client struct {
 	endpoint *url.URL
-	httpConn *http.Client
+	insecure bool
 }
 
 func (client *client) getURL(path string) string {
 	url := strings.TrimRight(client.endpoint.String(), "/")
-	if client.endpoint.Scheme == "unix" {
-		url = ""
-	}
 	return fmt.Sprintf("%s%s", url, path)
+}
+
+func (client client) Conn() *http.Client {
+	c := http.Client{}
+	if client.insecure {
+		c.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	}
+	return &c
 }
 
 func (client *client) do(method string, path string, data interface{}) ([]byte, int, error) {
@@ -55,22 +59,10 @@ func (client *client) do(method string, path string, data interface{}) ([]byte, 
 		return nil, -1, err
 	}
 
-	req.Header.Set("User-Agent", "microdocker")
+	req.Header.Set("User-Agent", "Gepo-v0.0.1")
 	req.Header.Set("Content-Type", "Content-Type: application/json")
 
-	var res *http.Response
-	if client.endpoint.Scheme == "unix" {
-		dial, err := net.Dial(client.endpoint.Scheme, client.endpoint.Path)
-		if err != nil {
-			return nil, -1, err
-		}
-		newConn := httputil.NewClientConn(dial, nil)
-		res, err = newConn.Do(req)
-		defer newConn.Close()
-
-	} else {
-		res, err = client.httpConn.Do(req)
-	}
+	res, err := client.Conn().Do(req)
 	if err != nil {
 		status := 0
 		if res != nil {
@@ -119,18 +111,7 @@ func (client *client) stream(method, path string, headers map[string]string, in 
 		req.Header.Set(key, value)
 	}
 
-	var res *http.Response
-	if client.endpoint.Scheme == "unix" {
-		dial, err := net.Dial(client.endpoint.Scheme, client.endpoint.Path)
-		if err != nil {
-			return err
-		}
-		newConn := httputil.NewclientConn(dial, nil)
-		res, err = newConn.Do(req)
-		defer newConn.Close()
-
-	} else {
-		res, err = client.httpConn.Do(req)
+	res, err = client.Conn().Do(req)
 	}
 	if err != nil {
 		return err

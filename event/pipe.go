@@ -3,12 +3,20 @@ package event
 import "sync"
 
 func NewPipe() *Pipe {
-	return &Pipe{chans: make(map[string]chan<- Event)}
+	return &Pipe{
+		chans: make(map[string]chan<- Event),
+	}
 }
 
 type Pipe struct {
 	sync.Mutex
 	chans map[string]chan<- Event
+}
+
+func (p *Pipe) Watch(ch <-chan Event) {
+	for e := range ch {
+		p.Emit(e)
+	}
 }
 
 func (p *Pipe) Emit(e Event) {
@@ -24,12 +32,19 @@ func (p *Pipe) Emit(e Event) {
 			wg.Done()
 		}(ch)
 	}
+
 	wg.Wait()
 }
 func (p *Pipe) Pipe(ch <-chan Event) {
 	for e := range ch {
 		p.Emit(e)
 	}
+}
+
+func (p *Pipe) New(name string) chan Event {
+	ch := make(chan Event)
+	p.Add(name, ch)
+	return ch
 }
 
 func (p *Pipe) Add(name string, ch chan Event) {

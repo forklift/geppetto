@@ -14,7 +14,7 @@ import (
 	"github.com/omeid/go-ini"
 )
 
-var BasePath = "/etc/geppetto/"
+var BasePath = "/etc/geppetto/services"
 
 func New(name string) (*Unit, error) {
 	u := &Unit{Name: name}
@@ -97,13 +97,15 @@ func (u *Unit) Prepare() error {
 
 	u.processExitStatus = make(chan error, 1)
 
-	//TODO: Consider the arguments?
+	//TODO: We need to export, $HOME, $USER, $EDITOR, et all. Should be done at Engine level, or deamon?
+	shellwords.ParseEnv = true
 	cmd, err := shellwords.Parse(u.Service.ExecStart)
 	if err != nil {
 		return err
 	}
 
-	u.process = exec.Command(cmd[0], cmd[1:]...)
+	u.process = exec.Command(cmd[0])
+	u.process.Args = cmd
 
 	u.process.Dir = u.Service.WorkingDirectory
 
@@ -127,11 +129,6 @@ func (u *Unit) Clean() []error {
 func (u *Unit) Type() event.Type {
 	return u.status
 
-}
-
-func (u *Unit) Send(s event.Type) {
-	//TODO: Notify the channel.
-	u.status = s
 }
 
 func (u *Unit) Start() chan event.Event {

@@ -13,16 +13,20 @@ func NewClient(endpoint string) (*Server, error) {
 		return nil, err
 	}
 
-	return &Server{&client{endpoint: ep, httpConn: http.DefaultClient}}, nil
+	return &Server{&client{endpoint: ep, insecure: false}}, nil
 }
 
 type Server struct {
-	c *client
+	client *client
+}
+
+func (s *Server) Insecure() {
+	s.client.insecure = true
 }
 
 func (s *Server) Ping() error {
 	path := "/_ping"
-	body, status, err := s.c.do("GET", path, nil)
+	body, status, err := s.client.do("GET", path, nil)
 	if err != nil {
 		return err
 	}

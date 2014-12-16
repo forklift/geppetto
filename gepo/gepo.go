@@ -20,6 +20,11 @@ func main() {
 	app.Usage = "Geppetto command line interface."
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
+			Name:  "insecure",
+			Usage: "Don't verify the server certificate.",
+		},
+
+		cli.BoolFlag{
 			Name:  "verbose",
 			Usage: "Be talkative.",
 		},
@@ -29,9 +34,9 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:   "endpoint",
-			Value:  "http://127.0.0.1:5000",
+			Value:  "https://127.0.0.1:9090",
 			Usage:  "The Geppetto endpoint.",
-			EnvVar: "GEPPETOO_ENDPOINT",
+			EnvVar: "GEPPETTO_ENDPOINT",
 		},
 	}
 
@@ -41,6 +46,7 @@ func main() {
 
 	app.Commands = []cli.Command{
 		ping,
+		keygen,
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -51,9 +57,12 @@ func main() {
 
 		server, err = api.NewClient(c.String("endpoint"))
 
-		if err == nil {
-			err = server.Ping()
+		if c.Bool("insecure") {
+			server.Insecure()
 		}
+		//if err == nil {
+		//	err = server.Ping()
+		//}
 
 		if err != nil {
 			Log.Error(err)

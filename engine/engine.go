@@ -11,10 +11,13 @@ import (
 func New() *Engine {
 
 	e := &Engine{
-		name:   "Geppetto",
-		Units:  unit.NewUnitList(),
-		Events: make(chan event.Event),
+		name:      "Geppetto",
+		Registry:  unit.NewUnitList(),
+		Events:    make(chan event.Event),
+		Listeners: event.NewPipe(),
 	}
+
+	go e.Listeners.Watch(e.Events)
 
 	return e
 }
@@ -22,9 +25,10 @@ func New() *Engine {
 type Engine struct {
 	name string
 	//All le transactions.
-	Units *unit.UnitList
+	Registry *unit.UnitList
 
-	Events chan event.Event
+	Events    chan event.Event
+	Listeners *event.Pipe
 
 	//Internals.
 	//One transaction au a time
@@ -32,7 +36,7 @@ type Engine struct {
 }
 
 func (e *Engine) Attach(u *unit.Unit) error {
-	e.Units.Add(u)
+	e.Registry.Add(u)
 	return nil
 }
 
@@ -49,7 +53,7 @@ func (e *Engine) Start(name string) chan event.Event {
 		u := &unit.Unit{Name: name}
 
 		pipe.Emit(event.New(e.name, event.UnitLoading, name))
-		if ut, ok := e.Units.Get(u.Name); ok {
+		if ut, ok := e.Registry.Get(u.Name); ok {
 			pipe.Emit(event.New(e.name, event.UnitAlreadyLoaded, u.Name))
 			u = ut
 		} else {
@@ -93,12 +97,12 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	pipeline, errs, cancel, units := unit.NewPipeline()
 
 	var count sync.WaitGroup
-	all := pipeline.Do(errs, cancel, units, func(*unit.Unit) error {
+	mix := pipeline.Do(errs, cancel, units, func(*unit.Unit) error {
 		count.Add(1)
 		return nil
 	})
 	//Filter loaded units.
-	loaded, fresh := pipeline.Filter(errs, cancel, all, e.Units.Has)
+	loaded, fresh := pipeline.Filter(errs, cancel, mix, e.Registry.Has)
 
 	//Load the fresh units.
 	fresh = pipeline.Do(errs, cancel, fresh, unit.Read)
@@ -107,8 +111,12 @@ func (e *Engine) Prepare(u *unit.Unit) error {
 	fresh = pipeline.Do(errs, cancel, fresh, e.Attach)
 
 	//Yup.
-	all = pipeline.Merge(loaded, fresh)
+	all := pipeline.Merge(loaded, fresh)
 
+	all = pipeline.Do(errs, cancel, all, func(e *unit.Unit) error {
+		fmt.Printf("e %+v\n", e)
+		return nil
+	})
 	//Emit deps to units channel.
 	all = pipeline.Do(errs, cancel, all, pipeline.RequestDeps(units))
 
@@ -148,7 +156,7 @@ func (e *Engine) Stop(name string) chan event.Event {
 	go func() {
 		defer close(out)
 
-		u, ok := e.Units.Get(name)
+		u, ok := e.Registry.Get(name)
 		if !ok {
 			pipe.Emit(event.New(e.name, event.UnitNotLoaded, name))
 			return
@@ -170,10 +178,10 @@ func (e *Engine) Stop(name string) chan event.Event {
 		pipe.Pipe(u.Stop(e.name))
 		u.Deps.ForEach(func(u *unit.Unit) {
 			if u.Listeners.Count() < 2 {
-				e.Units.Drop(name)
+				e.Registry.Drop(name)
 			}
 		})
-		e.Units.Drop(name)
+		e.Registry.Drop(name)
 
 		//TODO: Clean up dropping
 	}()
