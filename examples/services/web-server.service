@@ -1,28 +1,37 @@
-[Unit]
-Geppetto=1.0.0
-Description=Simple Web Server
+# vim: filetype=yaml
+
+geppetto: "1.0.0"
+description: Simple Web Server
 #network.service syslog.service
-#=syslog.service network.service
-Wants=
-Requires=
+#: syslog.service network.service
 
-After=
+wants: []
+requires: []
+after: []
 
-[Meta]
-Port=8080
-Address=127.0.0.1
+service:
+  http:
+    port: 8080
+    address: $IP
+  api:
+    port: 9090
+    address: $IP
 
-[Check]
-id=web-server-check-1
-name=web server check
-script=/usr/local/bin/check_mem.py
-interval=10s
+check:
+  http :
+    name: web server check
+    exec: ping $THIS_HTTP_ADDRESS:$THIS_HTTP_PORT
+    interval: 10s
 
+  api:
+    name: web api check
+    exec: ping $THIS_API_ADDRESS:$THIS_API_PORT
+    interval: 10s
 
-[Service]
-Type=simple
-User=go
-Group=go
-WorkingDirectory=/home/go/go/
-ExecStart=/home/go/go/bin/web-server 
-#-p $WEB_SERVER_Address
+process:
+  type: simple
+  user: go
+  group: go
+  workingdirectory: /home/go/go/
+  execstart: /home/go/go/bin/web-server 
+  #-p $web_SERVER_Address

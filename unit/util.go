@@ -1,11 +1,12 @@
 package unit
 
 import (
-	"io"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"github.com/omeid/go-ini"
+	"gopkg.in/yaml.v2"
 )
 
 func New(name string) (*Unit, error) {
@@ -14,17 +15,21 @@ func New(name string) (*Unit, error) {
 }
 
 func Read(unit *Unit) error {
-
-	file, err := os.Open(filepath.Join(BasePath, unit.Name))
+	location := filepath.Join(BasePath, unit.Name)
+	unitfile, err := ioutil.ReadFile(location)
 	if err != nil {
 		return err
 	}
-
-	return Parse(file, unit)
+	return Parse(unitfile, unit)
 }
 
-func Parse(reader io.Reader, unit *Unit) error {
-	return ini.NewDecoder(reader).Decode(unit)
+func Parse(unitfile []byte, unit *Unit) error {
+	err := yaml.Unmarshal(unitfile, unit)
+	fmt.Printf("err %+v\n", err)
+	fmt.Printf("unit %+v\n", unit)
+	os.Exit(0)
+
+	return nil
 }
 
 func Make(names []string) []*Unit {

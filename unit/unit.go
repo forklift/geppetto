@@ -2,20 +2,33 @@ package unit
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/forklift/geppetto/event"
+	"github.com/omeid/semver"
 )
 
 var BasePath = "/etc/geppetto/services"
 
 type Unit struct {
-	//Unit is the "unit" files for Geppeto.
-	Explicit bool
-
 	// Reserved names `gGod`, `gCurrentTransaction`
 	Name string
+
+	// The version of Gepetto that this Unit was written for, Gepetto will try it's best
+	// to treat the Unit like the version specified.
+	// Gepetto will refuse to run a Unit If version is missing, invalid, or incompatible.
+	Geppetto        string
+	GeppettoVersion *semver.Version
+	// A free-form string describing of the Unit. This is intended for use in UIs to show descriptive information along with the service name.
+	// The description should contain a name that means something to the end user.
+	// Good example: `Nginx Server and Reverse Proxy`.
+	// Bad example: `Nginx` (too specific and meaningless for people who do not know Nginx).
+	// Bad example: `Web Server` (too generic).
+	// Bad example: `Nginx high-performance light-weight HTTP and Reverse Proxy Server` (too long).
+
+	Description string
+	//Unit is the "unit" files for Geppeto.
+	Explicit bool
 
 	// A space-separated list of required prerequiestp. if the units listed here are not started already, they will not be started and the transaction will fail immediately.
 	Prerequests []string
@@ -42,8 +55,10 @@ type Unit struct {
 
 	status event.Type
 
-	Meta    Meta
-	Service Service
+	Service map[string]Service
+	Check   map[string]Check
+
+	Process Process
 
 	//internals
 	prepared bool
@@ -69,12 +84,7 @@ func (u *Unit) Prepare() error {
 
 	var err error
 
-	err = u.Meta.Prepare()
-	if err != nil {
-		return fmt.Errorf("Meta: %s", err)
-	}
-
-	err = u.Service.Prepare()
+	err = u.Process.Prepare()
 	if err != nil {
 		return err
 	}
@@ -84,7 +94,7 @@ func (u *Unit) Prepare() error {
 }
 
 func (u *Unit) Clean() []error {
-	return u.Service.CloseIO() //TODO: Check if we have other deps.
+	return u.Process.CloseIO() //TODO: Check if we have other deps.
 }
 
 func (u *Unit) Type() event.Type {
@@ -119,9 +129,9 @@ func (u *Unit) Start() chan event.Event {
 		}*/
 
 		var err error
-		err = u.Service.ConnectIO()
+		err = u.Process.ConnectIO()
 		if err != nil {
-			events <- event.New(u.Name, event.ServiceConnectFailed, err.Error())
+			events <- event.New(u.Name, event.ProcessConnectFailed, err.Error())
 			return
 		}
 
@@ -129,7 +139,7 @@ func (u *Unit) Start() chan event.Event {
 		//go u.processWatch()
 
 		if err != nil {
-			events <- event.New(u.Name, event.ServiceStartFailed, err.Error())
+			events <- event.New(u.Name, event.ProcessStartFailed, err.Error())
 			return
 		}
 
@@ -175,7 +185,7 @@ func (u *Unit) stop(out chan event.Event, sender string) error {
 		return err
 	}
 
-	//u.process.Service.Signal(syscall.SIGKILL)
+	//u.process.Process.Signal(syscall.SIGKILL)
 
 	//Wait for process to exit.
 	//TODO: Timeout!
