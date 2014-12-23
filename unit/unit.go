@@ -4,11 +4,11 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/forklift/geppetto/event"
+	"github.com/forklift/operator/event"
 	"github.com/omeid/semver"
 )
 
-var BasePath = "/etc/geppetto/services"
+var BasePath = "/etc/operator/services"
 
 type Unit struct {
 	// Reserved names `gGod`, `gCurrentTransaction`
@@ -27,8 +27,6 @@ type Unit struct {
 	// Bad example: `Nginx high-performance light-weight HTTP and Reverse Proxy Server` (too long).
 
 	Description string
-	//Unit is the "unit" files for Geppeto.
-	Explicit bool
 
 	// A space-separated list of required prerequiestp. if the units listed here are not started already, they will not be started and the transaction will fail immediately.
 	Prerequests []string
@@ -61,11 +59,13 @@ type Unit struct {
 	Process Process
 
 	//internals
+	Standalone bool
+
 	prepared bool
 
 	//Transaction
 	Events    chan event.Event
-	Listeners *event.Pipe
+	Listeners *event.Topic
 
 	Deps *UnitList
 
@@ -79,7 +79,7 @@ func (u *Unit) Prepare() error {
 		return nil
 	}
 
-	u.Listeners = event.NewPipe()
+	u.Listeners = event.NewTopic()
 	u.Events = make(chan event.Event)
 
 	var err error

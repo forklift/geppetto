@@ -1,9 +1,7 @@
 package unit
 
 import (
-	"fmt"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 
 	"gopkg.in/yaml.v2"
@@ -24,12 +22,7 @@ func Read(unit *Unit) error {
 }
 
 func Parse(unitfile []byte, unit *Unit) error {
-	err := yaml.Unmarshal(unitfile, unit)
-	fmt.Printf("err %+v\n", err)
-	fmt.Printf("unit %+v\n", unit)
-	os.Exit(0)
-
-	return nil
+	return yaml.Unmarshal(unitfile, unit)
 }
 
 func Make(names []string) []*Unit {

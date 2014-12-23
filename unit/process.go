@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/forklift/geppetto/unit/sys/group"
-	"github.com/forklift/geppetto/unit/unifiedio"
+	"github.com/forklift/operator/unit/sys/group"
+	"github.com/forklift/operator/unit/unifiedio"
 	"github.com/mattn/go-shellwords"
 	//TODO: Port to GO 1.4, us /x/sys/unix
 )

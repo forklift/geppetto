@@ -44,6 +44,7 @@ func (ul *UnitList) Drop(u string) {
 
 	delete(ul.units, u)
 }
+
 func (ul *UnitList) Has(unit *Unit) bool {
 	ul.lock.Lock()
 	defer ul.lock.Unlock()

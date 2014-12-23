@@ -4,31 +4,6 @@ import "strconv"
 
 type Type string
 
-func (s Type) Error() string {
-	return string(s)
-}
-
-const (
-/*
-	not-found
-	active
-	loaded
-	inactive
-	waiting
-	running
-	exited
-	dead
-*/
-//TODO: Socket activeation??
-//listening
-
-//FUTURE:
-//elapsed
-//mounted
-//plugged
-//stub
-)
-
 const (
 	//General Errors.
 	ForbiddenOperation Type = "Forbidden Operation."
@@ -41,12 +16,8 @@ const (
 
 	//Unit Type
 	UnitStarting        Type = "Starting Unit."
-	UnitLoading         Type = "Loading Unit."
 	UnitActive          Type = "Unit Active."
 	UnitDead            Type = "Unit Dead."
-	UnitLoadingFailed   Type = "Unit Load failed."
-	UnitNotLoaded       Type = "Unit Not Loaded."
-	UnitAlreadyLoaded   Type = "Unit Already loaded."
 	UnitPreparingFailed Type = "Unit Failed to prepare."
 	UnitRegistering     Type = "Registering Unit."
 	UnitDeregistered    Type = "Dergistered Unit."

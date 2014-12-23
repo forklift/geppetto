@@ -1,6 +1,6 @@
 # vim: filetype=yaml
 
-geppetto: "1.0.0"
+operator: "1.0.0"
 description: Simple Web Server
 #network.service syslog.service
 #: syslog.service network.service

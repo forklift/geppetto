@@ -9,14 +9,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/forklift/geppetto/engine"
-	"github.com/forklift/geppetto/event"
-	"github.com/forklift/geppetto/unit"
+	"github.com/forklift/operator/engine"
+	"github.com/forklift/operator/unit"
 )
 
 var (
 	host     = flag.String("host", ":9090", "Define what TCP port to bind to")
-	base     = flag.String("path", "/etc/geppetto", "Geppetto files base path.")
+	base     = flag.String("path", "/etc/operator", "Geppetto files base path.")
 	start    = flag.String("start", "", "List of units to start by defualt.")
 	insecure = flag.Bool("insecure", false, "Don't use TLS for communications.")
 )
@@ -30,8 +29,8 @@ func main() {
 	unit.BasePath = path.Join(*base, "services")
 
 	Engine = engine.New()
-	engineLog := make(chan event.Event)
-	Engine.Listeners.Add("logs", engineLog)
+	//	engineLog := make(chan event.Event)
+	//	Engine.Listeners.Add("logs", engineLog)
 
 	mux := http.NewServeMux()
 
@@ -45,9 +44,9 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for e := range engineLog {
-			log.Println(e)
-		}
+		//for e := range engineLog {
+		//	log.Println(e)
+		//}
 	}()
 
 	//Start the server.
